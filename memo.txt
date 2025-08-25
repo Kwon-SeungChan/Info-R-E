@@ -1,0 +1,35 @@
+C. elegans : 예쁜 꼬마 선충
+neurite : 축삭 돌기
+PostSynaptic : 시냅스 후 신호를 받는 뉴런 
+형식)
+BRAIN.postSynaptic = {
+    "뉴런이름": [ThisState, NextState],  // 항상 길이가 2인 배열
+    ...
+}
+
+여기서 state는 얼마나 그 뉴런이 활성화 되었는지 정도를 나타냄.
+
+// 예시:
+BRAIN.postSynaptic['ADAL'] = [0, 0];
+
+
+PreSynaptic : 시냅스 전 신호를 전달하는 뉴런 (dendrite_accumulate의 parameter)
+Connectome(커넥톰) : 신경과학 전문 용어로, 신경계의 전체 신경망 구조를 의미한다.
+이 코드에서는 전체 뉴런를 담고 있다.
+형식)
+BRAIN.weights = {
+    "뉴런이름": {
+        "연결된뉴런1": 가중치값,
+        "연결된뉴런2": 가중치값,
+        ...
+    }
+}
+
+FireThreshold : 발화 임계값으로 해당 뉴런이 이 값을 넘은 State값을 가지게 되면 발화함.
+AccumLeft랑 AccumRight는 근육들의 수축 정도를 제어하는 애들, 즉 근육 활성도를 나타내는 애들임. 얘들 값이 높아지면 근육이 더 많이 수축 하는 걸로 보면 됨. 한쪽이 높으면 그 쪽으로 회전하는 거고 같으면 직진하는 거.
+stimulateNoseTouchNeurons랑stimulateFoodSenseNeurons를 활성화 시키면 684아래 코드들 부터 영향을 주는데 일단 각각 무슨 역할 하는지 주석 달아놓음.
+23번 줄 self.Connectome={}에서 딕셔너리 초기화
+29번 줄부터 259번 줄까지 근육을 기본, 전체, 좌우, 등배의 이름으로 구분하여 리스트 만듦. 주석 적어둠
+힘수 dendrite_accumlate: 시냅스에서 신호가 전달되는 과정을 시뮬레이션하는 핵심 함수임. PreSynaptic이 신호를 보내는 애임(뉴런) 얘가 입력되면 self.weights[PreSynaptic]에서 연결된 뉴런에 대해 가중치 누적함. 즉 이건 실재 상황에서 일어나는 시냅스 전달과정을 단순화하여 구현한 것임.
+함수 RandExcite: 얘는 신경망에 무작위성을 부여하는 함수임. 아무 뉴런 40개를 선택하고 선택된 것들을 바로 위에 설명한 함수인 dendrite_accumlate에 호출하고 이를 통해 신경망에 랜덤한 자극 줌
+함수 Connectome_presynaptic은 문제있는 거 같음. 실재로 사용되지 않는 걸로 보인대 AI가. 승찬이 수정 Plz
