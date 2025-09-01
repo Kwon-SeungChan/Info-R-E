@@ -151,7 +151,7 @@ class Brain:
             'MDR18',
             'MDR19',
             'MDR20',
-            'MDL21',
+            'MDL21', # WTF?? Why left muscle in right muscle list??
             'MDR22',
             'MDR23',
             'MVR07',
@@ -168,7 +168,7 @@ class Brain:
             'MVR18',
             'MVR19',
             'MVR20',
-            'MVL21',
+            'MVL21', # WTF?? Why left muscle in right muscle list??
             'MVR22',
             'MVR23',
         ]
@@ -228,7 +228,7 @@ class Brain:
             'MDR18',
             'MDR19',
             'MDR20',
-            'MDL21',
+            'MDL21', # WTF?? Why left muscle in right muscle list??
             'MDR22',
             'MDR23',
         ]
@@ -248,7 +248,7 @@ class Brain:
             'MVR18',
             'MVR19',
             'MVR20',
-            'MVL21',
+            'MVL21', # WTF?? Why left muscle in right muscle list??
             'MVR22',
             'MVR23',
         ]
@@ -279,13 +279,14 @@ class Brain:
             self.Connectome[PreSynaptic] = True
 
     def update (self):
+        
         if (self.IsStimulatedHungerNeurons):
             self.signal_indensity_accumulate('RIML')
             self.signal_indensity_accumulate('RIMR')
             self.signal_indensity_accumulate('RICL')
             self.signal_indensity_accumulate('RICR')
             self.run_connectome()
-
+            
         if (self.IsStimulatedNoseTouchNeurons):
             self.signal_indensity_accumulate('FLPR') # 앞쪽 감각
             self.signal_indensity_accumulate('FLPL')
@@ -297,7 +298,7 @@ class Brain:
             self.signal_indensity_accumulate('OLQDR')
             self.signal_indensity_accumulate('OLQVR')
             self.signal_indensity_accumulate('OLQVL')
-            self.run_connectome()
+            self.run_connectome()        
         
         if (self.IsStimulatedFoodSenseNeurons):
             self.signal_indensity_accumulate('ADFL') # 냄새 감지
@@ -308,7 +309,7 @@ class Brain:
             self.signal_indensity_accumulate('ASIR')
             self.signal_indensity_accumulate('ASJR')
             self.signal_indensity_accumulate('ASJL')
-            self.run_connectome()
+            self.run_connectome()            
 
   # RIML RIMR RICL RICR hunger neurons
   # PVDL PVDR nociceptors
@@ -341,10 +342,10 @@ class Brain:
         while m < len(self.AllMuscleList):
             MuscleName = self.AllMuscleList[m]
 
-            if (MuscleName not in self.AllLeftMuscles):
+            if (MuscleName in self.AllLeftMuscles):
                 self.AccumulatedLeftMusclesSignal += self.PostSynaptic[MuscleName][self.NextSignalIntensityIndex]
                 self.PostSynaptic[MuscleName][self.NextSignalIntensityIndex] = 0
-            elif (MuscleName not in self.AllRightMuscles):
+            elif (MuscleName in self.AllRightMuscles):
                 self.AccumulatedRightMusclesSignal += self.PostSynaptic[MuscleName][self.NextSignalIntensityIndex]
                 self.PostSynaptic[MuscleName][self.NextSignalIntensityIndex] = 0
               

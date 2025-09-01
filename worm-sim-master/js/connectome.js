@@ -158,7 +158,7 @@ BRAIN.mRight = [
 	'MDR18',
 	'MDR19',
 	'MDR20',
-	'MDL21',
+	'MDL21', // WTF??? Why left muscle in right list???
 	'MDR22',
 	'MDR23',
 	'MVR07',
@@ -252,7 +252,7 @@ BRAIN.musVright = [
 	'MVR18',
 	'MVR19',
 	'MVR20',
-	'MVL21',
+	'MVL21', // WTF?? Why left muscle in right muscle list??
 	'MVR22',
 	'MVR23',
 ];
