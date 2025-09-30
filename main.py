@@ -3,7 +3,6 @@ import sys
 import random
 import math
 from brain import Brain
-import constants
 
 # ----------------------------
 # 초기화 및 창 설정

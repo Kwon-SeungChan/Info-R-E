@@ -1,0 +1,21 @@
+CElegansNeuronTables.xlsx에 데이터 종류가 2종류가 있다.
+1. A뉴런->B뉴런으로 연결된 SEND 연결 수
+2. A뉴런->B뉴런으로 연결된 GapJunction 연결 수
+3. A뉴런->B뉴런 연결의 Neurotransmitter
+
+GapJunction는 전기적 직접 연결(이온 통로)
+SEND는 화학적 전달물질 방출→수용체
+Neurotransmitter = 그 뉴런이 그 연결해서 주로 전달하는 신경 물질 (ex. Serotonin, Dopamine, Tyramine, FMRFamide(펩타이드))
+
+
+그래서 이를 바탕으로 가중치를 계산해야 하는데, 원래 생물학적으로 가중치라는 개념이 아니라,
+SEND 연결과 GapJunction 연결이라는 개념으로 따로 동작한다.
+하지만 우리는 구현을 위해서 SEND 연결수와 GapJunction 연결 수로 가중치 개념을 도입했다.
+가중치 공식은 다음과 같다.
+
+1. 가중치 = SEND 연결 수 + GapJunction 연결 수 * 0.3 (화학 민감형)
+이 가중치 공식이 적용된 data set : constants_chem_sensitive.py
+2. 가중치 = SEND 연결 수 + GapJunction 연결 수 (default)
+이 가중치 공식이 적용된 data set : constants_default.py
+
+근데 적용해보니까 계속 제자리에서 맴돌면서 정상 작동을 안함
