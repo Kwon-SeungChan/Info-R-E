@@ -55,8 +55,8 @@ FOOD_EAT_DISTANCE = 20     # 픽셀 (먹는 거리)
 # ----------------------------
 k_value = 0.5  # 초기값 0.5
 start_time = pygame.time.get_ticks()  # 시작 시간 기록
-K_INCREASE_INTERVAL = 60000  # 1분 = 60000 밀리초
-K_INCREASE_AMOUNT = 0.1  # 1분마다 0.1씩 증가
+K_INCREASE_INTERVAL = 1000  # 1초 = 1000 밀리초
+K_INCREASE_AMOUNT = 0.01  # 1초마다 0.01씩 증가
 K_DECREASE_ON_EAT = 0.1  # 먹이를 먹으면 0.1씩 감소
 
 # ----------------------------
@@ -250,9 +250,9 @@ def update_k_value():
     global k_value
     current_time = pygame.time.get_ticks()
     elapsed_time = current_time - start_time
-    # 경과 시간에 따라 k 값 계산 (1분마다 0.1씩 증가)
-    minutes_passed = elapsed_time // K_INCREASE_INTERVAL
-    k_value = min(1.0, 0.5 + minutes_passed * K_INCREASE_AMOUNT)
+    # 경과 시간에 따라 k 값 계산 (1초마다 0.01씩 증가)
+    seconds_passed = elapsed_time // K_INCREASE_INTERVAL
+    k_value = min(1.0, 0.5 + seconds_passed * K_INCREASE_AMOUNT)
 
 # ----------------------------
 # 배고픔 감소 (먹이를 먹었을 때)
@@ -262,15 +262,15 @@ def decrease_hunger():
     k_value = max(0.0, k_value - K_DECREASE_ON_EAT)
     # 시작 시간을 재조정하여 감소된 k 값을 반영
     current_time = pygame.time.get_ticks()
-    # k_value = 0.5 + minutes_passed * 0.1 에서 역산
-    # minutes_passed = (k_value - 0.5) / 0.1
+    # k_value = 0.5 + seconds_passed * 0.01 에서 역산
+    # seconds_passed = (k_value - 0.5) / 0.01
     if k_value >= 0.5:
-        minutes_passed = (k_value - 0.5) / K_INCREASE_AMOUNT
-        start_time = current_time - int(minutes_passed * K_INCREASE_INTERVAL)
+        seconds_passed = (k_value - 0.5) / K_INCREASE_AMOUNT
+        start_time = current_time - int(seconds_passed * K_INCREASE_INTERVAL)
     else:
         # k_value가 0.5 미만이면 시작 시간을 미래로 설정
-        minutes_to_reach_05 = (0.5 - k_value) / K_INCREASE_AMOUNT
-        start_time = current_time + int(minutes_to_reach_05 * K_INCREASE_INTERVAL)
+        seconds_to_reach_05 = (0.5 - k_value) / K_INCREASE_AMOUNT
+        start_time = current_time + int(seconds_to_reach_05 * K_INCREASE_INTERVAL)
 
 # ----------------------------
 # 벌레 물리/이동 업데이트
