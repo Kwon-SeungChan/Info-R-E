@@ -37,6 +37,19 @@ brain = Brain()
 brain.setup()
 brain.RandExcite()
 
+# 뇌 업데이트 타이머 (JavaScript는 500ms마다 업데이트)
+brain_update_interval = 500  # milliseconds
+last_brain_update = 0
+
+# 뉴런 자극 리셋 타이머 (JavaScript는 2000ms 후 리셋)
+neuron_stimulation_reset_time = 2000  # milliseconds
+last_touch_time = 0
+last_food_sense_time = 0
+
+# 음식 감지 거리 설정
+FOOD_SENSE_DISTANCE = 200  # 픽셀 (원래 50에서 200으로 증가)
+FOOD_EAT_DISTANCE = 20     # 픽셀 (먹는 거리)
+
 # ----------------------------
 # IK(벌레 본체) 관련 클래스
 # ----------------------------
@@ -119,11 +132,14 @@ def draw_worm():
         pygame.draw.circle(screen, (255, 255, 255), p, body_segment_width // 2, 0)
 
 # ----------------------------
-# 뉴런 활성화 시각화 - 화면 안 모든 뉴런 표시
+# 뉴런 활성화 시각화 - 302개 뉴런만 표시 (근육 제외)
 # ----------------------------
 def draw_brain_activity(brain, surface, start_x, start_y, width, height):
     font = pygame.font.SysFont("Arial", 12)
-    neurons = sorted(brain.PostSynaptic.keys())
+    # PostSynaptic에서 근육을 제외한 뉴런만 필터링
+    muscle_prefixes = ['MDL', 'MDR', 'MVL', 'MVR']
+    neurons = sorted([n for n in brain.PostSynaptic.keys() 
+                     if not any(n.startswith(prefix) for prefix in muscle_prefixes)])
     total_neurons = len(neurons)
 
     max_rows = 20
@@ -133,7 +149,7 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
     circle_radius = min(8.5, (width - margin * 2) // (cols * 2))
 
     pygame.draw.rect(surface, (18, 18, 20), (start_x, start_y, width, height))
-    title_surf = font.render("Neuron Activity (PostSynaptic)", True, (230, 230, 230))
+    title_surf = font.render(f"C. elegans Connectome - {total_neurons} Neurons", True, (230, 230, 230))
     surface.blit(title_surf, (start_x + 8, start_y + 6))
     thresh_surf = font.render(f"FireThreshold: {brain.FireThreshold}", True, (200, 200, 200))
     surface.blit(thresh_surf, (start_x + 8, start_y + 22))
@@ -175,7 +191,7 @@ def update_brain():
 # 벌레 물리/이동 업데이트
 # ----------------------------
 def update():
-    global current_speed, facing_angle, target_position
+    global current_speed, facing_angle, target_position, last_touch_time, last_food_sense_time
     current_speed += speed_change_rate
 
     angle_difference = facing_angle - target_angle
@@ -196,22 +212,27 @@ def update():
     if target_position[0] < 0:
         target_position[0] = 0
         brain.IsStimulatedNoseTouchNeurons = True
+        last_touch_time = pygame.time.get_ticks()
     elif target_position[0] > WINDOW_WIDTH - NEURON_PANEL_WIDTH:
         target_position[0] = WINDOW_WIDTH - NEURON_PANEL_WIDTH
         brain.IsStimulatedNoseTouchNeurons = True
+        last_touch_time = pygame.time.get_ticks()
 
     if target_position[1] < 0:
         target_position[1] = 0
         brain.IsStimulatedNoseTouchNeurons = True
+        last_touch_time = pygame.time.get_ticks()
     elif target_position[1] > WINDOW_HEIGHT:
         target_position[1] = WINDOW_HEIGHT
         brain.IsStimulatedNoseTouchNeurons = True
+        last_touch_time = pygame.time.get_ticks()
 
     for f in food_positions[:]:
         distance = math.hypot(target_position[0] - f[0], target_position[1] - f[1])
-        if distance <= 50:
+        if distance <= FOOD_SENSE_DISTANCE:
             brain.IsStimulatedFoodSenseNeurons = True
-            if distance <= 20:
+            last_food_sense_time = pygame.time.get_ticks()
+            if distance <= FOOD_EAT_DISTANCE:
                 food_positions.remove(f)
 
     worm_chain.update(target_position)
@@ -220,6 +241,8 @@ def update():
 # 메인 루프
 # ----------------------------
 while True:
+    current_time = pygame.time.get_ticks()
+    
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
@@ -230,7 +253,12 @@ while True:
                 add_food([mx, my])
 
     screen.fill((0, 0, 0))
-    update_brain()
+    
+    # JavaScript처럼 500ms마다 뇌 업데이트
+    if current_time - last_brain_update >= brain_update_interval:
+        update_brain()
+        last_brain_update = current_time
+    
     update()
     draw_food()
     draw_worm()
@@ -239,6 +267,13 @@ while True:
     pygame.display.flip()
     clock.tick(60 * GAME_SPEED)
 
+    # JavaScript처럼 2초 후에 뉴런 자극 리셋
     brain.IsStimulatedHungerNeurons = True
-    brain.IsStimulatedNoseTouchNeurons = False # True로 두면 계속 벽에 부딫히는 것으로 인식함
-    brain.IsStimulatedFoodSenseNeurons = False # True로 두면 계속 먹이가 있는 것으로 인식함 
+    
+    # 터치 자극은 2초 후 리셋
+    if last_touch_time > 0 and current_time - last_touch_time >= neuron_stimulation_reset_time:
+        brain.IsStimulatedNoseTouchNeurons = False
+    
+    # 음식 감지 자극은 2초 후 리셋
+    if last_food_sense_time > 0 and current_time - last_food_sense_time >= neuron_stimulation_reset_time:
+        brain.IsStimulatedFoodSenseNeurons = False
