@@ -524,7 +524,7 @@ def update_brain():
             if 'AFDR' in brain.PostSynaptic:
                 brain.PostSynaptic['AFDR'][brain.NextSignalIntensityIndex] += 10
             temp_reaction = "회피"
-        elif temp_diff < 1.0:
+        elif temp_diff < 2.0:
             # 선호 온도에 가까우면 약하게 자극 (만족)
             brain.PostSynaptic['AFDL'][brain.NextSignalIntensityIndex] += 2
             if 'AFDR' in brain.PostSynaptic:
