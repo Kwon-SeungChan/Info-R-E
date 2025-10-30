@@ -124,6 +124,11 @@ def draw_debug_info():
         pygame.draw.circle(debug_surface, (100, 255, 100, 50), (FOOD_SENSE_DISTANCE, FOOD_SENSE_DISTANCE), FOOD_SENSE_DISTANCE)
         screen.blit(debug_surface, (target_position[0] - FOOD_SENSE_DISTANCE, target_position[1] - FOOD_SENSE_DISTANCE))
         
+        # 먹이 먹는 범위 (작은 반투명 원)
+        eat_surface = pygame.Surface((FOOD_EAT_DISTANCE * 2, FOOD_EAT_DISTANCE * 2), pygame.SRCALPHA)
+        pygame.draw.circle(eat_surface, (255, 100, 100, 80), (FOOD_EAT_DISTANCE, FOOD_EAT_DISTANCE), FOOD_EAT_DISTANCE)
+        screen.blit(eat_surface, (target_position[0] - FOOD_EAT_DISTANCE, target_position[1] - FOOD_EAT_DISTANCE))
+        
         # 머리가 이동하는 방향 화살표
         arrow_length = 50
         arrow_end_x = target_position[0] + math.cos(facing_angle) * arrow_length
@@ -192,27 +197,56 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
     cols = math.ceil(total_neurons / rows)
     margin = 20
     circle_radius = min(8.5, (width - margin * 2) // (cols * 2))
+    
+    # 뉴런 표시를 오른쪽으로 이동 (왼쪽에 디버깅 정보 공간 확보)
+    neuron_offset_x = 200  # 왼쪽에서 200픽셀 떨어진 곳부터 시작
 
     pygame.draw.rect(surface, (18, 18, 20), (start_x, start_y, width, height))
-    title_surf = font.render(f"C. elegans Connectome - {total_neurons} Neurons", True, (230, 230, 230))
-    surface.blit(title_surf, (start_x + 8, start_y + 6))
-    thresh_surf = font.render(f"FireThreshold: {brain.FireThreshold}", True, (200, 200, 200))
-    surface.blit(thresh_surf, (start_x + 8, start_y + 22))
     
-    # 배고픔 수치 표시
-    k_surf = font.render(f"배고픔 (k): {k_value:.2f}", True, (100, 255, 100))
-    surface.blit(k_surf, (start_x + 8, start_y + 38))
+    current_y = start_y + 6
     
-    # 모드 표시
+    # 디버깅 모드일 때만 표시
+    if debug_mode:
+        title_surf = font.render(f"C. elegans Connectome - {total_neurons} Neurons", True, (230, 230, 230))
+        surface.blit(title_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        thresh_surf = font.render(f"FireThreshold: {brain.FireThreshold}", True, (200, 200, 200))
+        surface.blit(thresh_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 배고픔 수치 표시
+        k_surf = font.render(f"배고픔 (k): {k_value:.2f}", True, (100, 255, 100))
+        surface.blit(k_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 이동 방향 벡터 표시
+        direction_x = math.cos(facing_angle)
+        direction_y = -math.sin(facing_angle)
+        dir_surf = font.render(f"방향 벡터: ({direction_x:.2f}, {direction_y:.2f})", True, (150, 200, 255))
+        surface.blit(dir_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 먹이 먹는 범위 표시
+        range_surf = font.render(f"먹이 먹는 범위: {FOOD_EAT_DISTANCE}px", True, (255, 150, 150))
+        surface.blit(range_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 먹이 감지 범위 표시
+        sense_surf = font.render(f"먹이 감지 범위: {FOOD_SENSE_DISTANCE}px", True, (150, 255, 150))
+        surface.blit(sense_surf, (start_x + 8, current_y))
+        current_y += 16
+    
+    # 모드 표시 (항상 표시)
     mode_text = "디버깅 모드 (Press 1: 일반, 2: 디버깅)" if debug_mode else "일반 모드 (Press 1: 일반, 2: 디버깅)"
     mode_surf = font.render(mode_text, True, (255, 200, 100))
-    surface.blit(mode_surf, (start_x + 8, start_y + 54))
+    surface.blit(mode_surf, (start_x + 8, current_y))
 
-    offset_y = start_y + 85  # 뉴런 표시 시작 위치를 더 아래로 (모드 표시 추가로 인해)
+    offset_y = start_y + 60  # 뉴런 표시 위치를 밑으로 내림
     for i, neuron in enumerate(neurons):
         row = i % rows
         col = i // rows
-        cx = start_x + margin + col * (2 * circle_radius + margin)
+        cx = start_x + neuron_offset_x + margin + col * (2 * circle_radius + margin)
         cy = offset_y + row * (2 * circle_radius + margin)
 
         activity = brain.PostSynaptic[neuron][brain.CurrentSignalIntensityIndex]
