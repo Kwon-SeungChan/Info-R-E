@@ -4,107 +4,117 @@ import random
 import math
 from brain import Brain
 
-# ----------------------------
-# 초기화 및 창 설정
-# ----------------------------
-pygame.init()
+# ============================================================
+# 상수 정의
+# ============================================================
+
+# 창 설정
 WINDOW_WIDTH, WINDOW_HEIGHT = 1800, 900
 NEURON_PANEL_WIDTH = 900
+GAME_SPEED = 1  # 1.0 = 정상 속도, 0.5 = 절반 속도, 2.0 = 두 배 속도
+
+# 먹이 시스템
+FOOD_SENSE_DISTANCE = 200  # 먹이 감지 범위 (픽셀)
+FOOD_EAT_DISTANCE = 20     # 먹이 섭취 범위 (픽셀)
+
+# 배고픔 시스템
+K_INITIAL_VALUE = 0.5
+K_INCREASE_INTERVAL = 1000  # 1초
+K_INCREASE_AMOUNT = 0.01
+K_DECREASE_ON_EAT = 0.1
+
+# 온도 시스템
+DEFAULT_TEMPERATURE = 20.0
+TEMPERATURE_MIN = -40.0
+TEMPERATURE_MAX = 80.0
+PREFERRED_TEMP_MIN = 8.0
+PREFERRED_TEMP_MAX = 25.0
+TEMP_GRID_SIZE = 30
+
+# 브러쉬 설정
+BRUSH_SIZE_MIN = 20
+BRUSH_SIZE_MAX = 150
+BRUSH_SIZE_STEP = 10
+BRUSH_INITIAL_SIZE = 50
+TEMP_SCALE_MIN = 1.0
+TEMP_SCALE_MAX = 60.0
+TEMP_SCALE_INITIAL = 5.0
+
+# 뉴런 시각화
+NEURON_MAX_ROWS = 20
+NEURON_MARGIN = 22.5
+NEURON_CIRCLE_RADIUS = 9
+NEURON_OFFSET_X = 200
+
+# 타이머
+BRAIN_UPDATE_INTERVAL = 500  # milliseconds
+NEURON_RESET_TIME = 2000     # milliseconds
+
+# 벌레 그리기
+WORM_BODY_WIDTH = 20
+WORM_SEGMENT_COUNT = 20
+WORM_FRAME_INTERVAL = 6
+
+# ============================================================
+# 초기화
+# ============================================================
+pygame.init()
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Worm Simulation with Neuron Visualization")
 clock = pygame.time.Clock()
 
-# ----------------------------
-# 개발용 속도 조절 상수
-# ----------------------------
-GAME_SPEED = 1  # 1.0 = 정상 속도, 0.5 = 절반 속도, 2.0 = 두 배 속도
+# ============================================================
+# 전역 변수
+# ============================================================
 
-# ----------------------------
-# 벌레 초기 상태 변수
-# ----------------------------
+# 벌레 상태
 target_position = [WINDOW_WIDTH // 2 - NEURON_PANEL_WIDTH, WINDOW_HEIGHT // 2]
 facing_angle = 0
 target_angle = 0
 current_speed = 0
 target_speed = 0
 speed_change_rate = 0
+
+# 먹이
 food_positions = []
 
-# ----------------------------
-# 뇌 객체 생성 및 초기 자극
-# ----------------------------
+# 배고픔
+k_value = K_INITIAL_VALUE
+start_time = pygame.time.get_ticks()
+
+# 온도
+preferred_temperature = random.uniform(PREFERRED_TEMP_MIN, PREFERRED_TEMP_MAX)
+temperature_map = {}
+current_temp_at_worm = DEFAULT_TEMPERATURE
+temp_reaction = "중립"
+
+# 브러쉬
+brush_mode = 'heat'
+brush_size = BRUSH_INITIAL_SIZE
+temperature_scale = TEMP_SCALE_INITIAL
+
+# UI 상태
+debug_mode = False
+input_mode = False
+input_text = ""
+mouse_pressed = False
+keys_pressed = set()
+
+# 타이머
+last_brain_update = 0
+last_touch_time = 0
+last_food_sense_time = 0
+
+# ============================================================
+# 뇌 객체 생성
+# ============================================================
 brain = Brain()
 brain.setup()
 brain.RandExcite()
 
-# 뇌 업데이트 타이머 (JavaScript는 500ms마다 업데이트)
-brain_update_interval = 500  # milliseconds
-last_brain_update = 0
-
-# 뉴런 자극 리셋 타이머 (JavaScript는 2000ms 후 리셋)
-neuron_stimulation_reset_time = 2000  # milliseconds
-last_touch_time = 0
-last_food_sense_time = 0
-
-# 음식 감지 거리 설정
-FOOD_SENSE_DISTANCE = 200  # 픽셀 (원래 50에서 200으로 증가)
-FOOD_EAT_DISTANCE = 20     # 픽셀 (먹는 거리)
-
-# ----------------------------
-# k 값 관련 변수 (배고픔 수치)
-# ----------------------------
-k_value = 0.5  # 초기값 0.5
-start_time = pygame.time.get_ticks()  # 시작 시간 기록
-K_INCREASE_INTERVAL = 1000  # 1초 = 1000 밀리초
-K_INCREASE_AMOUNT = 0.01  # 1초마다 0.01씩 증가
-K_DECREASE_ON_EAT = 0.1  # 먹이를 먹으면 0.1씩 감소
-
-# ----------------------------
-# 디버깅 모드
-# ----------------------------
-debug_mode = False  # False = 일반 모드, True = 디버깅 모드
-
-# ----------------------------
-# 온도 시스템
-# ----------------------------
-# 벌레가 선호하는 온도 (8~25도 범위에서 랜덤)
-preferred_temperature = random.uniform(8.0, 25.0)
-
-# 온도 맵 (각 픽셀의 온도 저장)
-# 기본 온도는 20도
-temperature_map = {}  # {(x, y): temperature}
-DEFAULT_TEMPERATURE = 20.0
-TEMPERATURE_MIN = -40.0
-TEMPERATURE_MAX = 80.0
-
-# 브러쉬 설정
-brush_mode = 'heat'  # 'heat', 'cool', or 'erase'
-brush_size = 50  # 브러쉬 반경
-BRUSH_SIZE_MIN = 20
-BRUSH_SIZE_MAX = 150
-BRUSH_SIZE_STEP = 10
-TEMPERATURE_BRUSH_STEP = 5.0  # 브러쉬로 변화시킬 온도
-
-# 온도 스케일 (표시할 온도 값들)
-temperature_scale = 5.0  # 한 칸당 5도씩 변화
-
-# 온도 반응 상태 (디버깅용)
-current_temp_at_worm = DEFAULT_TEMPERATURE
-temp_reaction = "중립"  # "만족", "중립", "회피"
-
-# 선호 온도 입력 모드
-input_mode = False
-input_text = ""
-
-# 마우스 클릭 상태
-mouse_pressed = False
-
-# 키보드 상태 추적
-keys_pressed = set()
-
-# ----------------------------
-# IK(벌레 본체) 관련 클래스
-# ----------------------------
+# ============================================================
+# IK(벌레 본체) 클래스
+# ============================================================
 class InverseKinematicsSegment:
     def __init__(self, length, head_point, tail_point):
         self.length = length
@@ -208,12 +218,11 @@ def draw_temperature_map():
     
     # 온도 포인트를 그리드로 그룹화
     temp_grid = {}
-    grid_size = 30  # 그리드 크기
     
     for (x, y), temp in temperature_map.items():
         if 0 <= x < WINDOW_WIDTH - NEURON_PANEL_WIDTH and 0 <= y < WINDOW_HEIGHT:
-            grid_x = int(x / grid_size) * grid_size
-            grid_y = int(y / grid_size) * grid_size
+            grid_x = int(x / TEMP_GRID_SIZE) * TEMP_GRID_SIZE
+            grid_y = int(y / TEMP_GRID_SIZE) * TEMP_GRID_SIZE
             
             # 그리드 셀의 평균 온도 계산
             if (grid_x, grid_y) not in temp_grid:
@@ -245,7 +254,7 @@ def draw_temperature_map():
         
         # 반투명 사각형 그리기
         pygame.draw.rect(temp_surface, (r, g, b, 80), 
-                        (grid_x, grid_y, grid_size, grid_size))
+                        (grid_x, grid_y, TEMP_GRID_SIZE, TEMP_GRID_SIZE))
         
         # 온도 텍스트 표시 (흰색)
         temp_text = font.render(f"{int(avg_temp)}°", True, (255, 255, 255))
@@ -320,24 +329,22 @@ def draw_debug_info():
         pygame.draw.line(screen, (255, 0, 0), (arrow_end_x, arrow_end_y), (tip1_x, tip1_y), 3)
         pygame.draw.line(screen, (255, 0, 0), (arrow_end_x, arrow_end_y), (tip2_x, tip2_y), 3)
 
-# ----------------------------
+# ============================================================
 # 벌레 그리기 함수
-# ----------------------------
+# ============================================================
 def draw_worm():
-    body_segment_width = 20
-    body_segment_count = 20
-    frame_interval = 6 // GAME_SPEED
+    frame_interval = WORM_FRAME_INTERVAL // GAME_SPEED
 
     if not hasattr(draw_worm, "head_path"):
         draw_worm.head_path = []
 
     draw_worm.head_path.insert(0, (target_position[0], target_position[1], facing_angle))
-    max_path_length = body_segment_count * frame_interval
+    max_path_length = WORM_SEGMENT_COUNT * frame_interval
     if len(draw_worm.head_path) > max_path_length:
         draw_worm.head_path = draw_worm.head_path[:max_path_length]
 
     segment_points = []
-    for i in range(body_segment_count):
+    for i in range(WORM_SEGMENT_COUNT):
         index = i * frame_interval
         if index < len(draw_worm.head_path):
             x, y, _ = draw_worm.head_path[index]
@@ -346,33 +353,28 @@ def draw_worm():
         segment_points.append((x, y))
 
     for i in range(len(segment_points) - 1):
-        pygame.draw.line(screen, (255, 255, 255), segment_points[i], segment_points[i + 1], body_segment_width)
+        pygame.draw.line(screen, (255, 255, 255), segment_points[i], segment_points[i + 1], WORM_BODY_WIDTH)
 
     for p in segment_points:
-        pygame.draw.circle(screen, (255, 255, 255), p, body_segment_width // 2, 0)
+        pygame.draw.circle(screen, (255, 255, 255), p, WORM_BODY_WIDTH // 2, 0)
 
-# ----------------------------
-# 뉴런 활성화 시각화 - 302개 뉴런만 표시 (근육 제외)
-# ----------------------------
+# ============================================================
+# 뉴런 활성화 시각화
+# ============================================================
 def draw_brain_activity(brain, surface, start_x, start_y, width, height):
-    # 한글 폰트 설정 (Windows 기본 한글 폰트)
+    # 한글 폰트 설정
     font = pygame.font.SysFont("malgungothic,arial", 16)
-    neuron_name_font = pygame.font.SysFont("malgungothic,arial", 9)  # 뉴런 이름용 작은 폰트
+    neuron_name_font = pygame.font.SysFont("malgungothic,arial", 9)
+    
     # PostSynaptic에서 근육을 제외한 뉴런만 필터링
     muscle_prefixes = ['MDL', 'MDR', 'MVL', 'MVR']
     neurons = sorted([n for n in brain.PostSynaptic.keys() 
                      if not any(n.startswith(prefix) for prefix in muscle_prefixes)])
     total_neurons = len(neurons)
 
-    max_rows = 20
-    rows = min(max_rows, total_neurons)
+    rows = min(NEURON_MAX_ROWS, total_neurons)
     cols = math.ceil(total_neurons / rows)
-    margin = 22.5
-    circle_radius = 9  # 뉴런 원 크기 증가
     
-    # 뉴런 표시를 오른쪽으로 이동 (왼쪽에 디버깅 정보 공간 확보)
-    neuron_offset_x = 200  # 왼쪽에서 200픽셀 떨어진 곳부터 시작
-
     pygame.draw.rect(surface, (18, 18, 20), (start_x, start_y, width, height))
     
     current_y = start_y + 6
@@ -483,12 +485,12 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
     surface.blit(mode_surf, (start_x + 8, current_y))
 
     # 뉴런을 오른쪽 하단에 배치
-    neuron_start_y = height - (rows * (2 * circle_radius + margin)) - margin
+    neuron_start_y = height - (rows * (2 * NEURON_CIRCLE_RADIUS + NEURON_MARGIN)) - NEURON_MARGIN
     for i, neuron in enumerate(neurons):
         row = i % rows
         col = i // rows
-        cx = start_x + neuron_offset_x + margin + col * (2 * circle_radius + margin)
-        cy = start_y + neuron_start_y + row * (2 * circle_radius + margin)
+        cx = start_x + NEURON_OFFSET_X + NEURON_MARGIN + col * (2 * NEURON_CIRCLE_RADIUS + NEURON_MARGIN)
+        cy = start_y + neuron_start_y + row * (2 * NEURON_CIRCLE_RADIUS + NEURON_MARGIN)
 
         activity = brain.PostSynaptic[neuron][brain.CurrentSignalIntensityIndex]
         if activity > brain.FireThreshold:
@@ -500,9 +502,9 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
         else:
             color = (80, 80, 80)
 
-        pygame.draw.circle(surface, color, (cx, cy), circle_radius)
+        pygame.draw.circle(surface, color, (cx, cy), NEURON_CIRCLE_RADIUS)
         name_surf = neuron_name_font.render(neuron, True, (230, 230, 230))
-        surface.blit(name_surf, (cx - name_surf.get_width() // 2, cy - circle_radius - 12))
+        surface.blit(name_surf, (cx - name_surf.get_width() // 2, cy - NEURON_CIRCLE_RADIUS - 12))
 
 # ----------------------------
 # 뇌 상태 업데이트
@@ -737,7 +739,7 @@ while True:
     update_k_value()
     
     # JavaScript처럼 500ms마다 뇌 업데이트
-    if current_time - last_brain_update >= brain_update_interval:
+    if current_time - last_brain_update >= BRAIN_UPDATE_INTERVAL:
         update_brain()
         last_brain_update = current_time
     
@@ -789,9 +791,9 @@ while True:
     brain.IsStimulatedHungerNeurons = True
     
     # 터치 자극은 2초 후 리셋
-    if last_touch_time > 0 and current_time - last_touch_time >= neuron_stimulation_reset_time:
+    if last_touch_time > 0 and current_time - last_touch_time >= NEURON_RESET_TIME:
         brain.IsStimulatedNoseTouchNeurons = False
     
     # 음식 감지 자극은 2초 후 리셋
-    if last_food_sense_time > 0 and current_time - last_food_sense_time >= neuron_stimulation_reset_time:
+    if last_food_sense_time > 0 and current_time - last_food_sense_time >= NEURON_RESET_TIME:
         brain.IsStimulatedFoodSenseNeurons = False
