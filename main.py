@@ -8,8 +8,8 @@ from brain import Brain
 # 초기화 및 창 설정
 # ----------------------------
 pygame.init()
-WINDOW_WIDTH, WINDOW_HEIGHT = 1600, 800
-NEURON_PANEL_WIDTH = 800
+WINDOW_WIDTH, WINDOW_HEIGHT = 1800, 900
+NEURON_PANEL_WIDTH = 900
 screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 pygame.display.set_caption("Worm Simulation with Neuron Visualization")
 clock = pygame.time.Clock()
@@ -65,6 +65,44 @@ K_DECREASE_ON_EAT = 0.1  # 먹이를 먹으면 0.1씩 감소
 debug_mode = False  # False = 일반 모드, True = 디버깅 모드
 
 # ----------------------------
+# 온도 시스템
+# ----------------------------
+# 벌레가 선호하는 온도 (8~25도 범위에서 랜덤)
+preferred_temperature = random.uniform(8.0, 25.0)
+
+# 온도 맵 (각 픽셀의 온도 저장)
+# 기본 온도는 20도
+temperature_map = {}  # {(x, y): temperature}
+DEFAULT_TEMPERATURE = 20.0
+TEMPERATURE_MIN = -40.0
+TEMPERATURE_MAX = 80.0
+
+# 브러쉬 설정
+brush_mode = 'heat'  # 'heat', 'cool', or 'erase'
+brush_size = 50  # 브러쉬 반경
+BRUSH_SIZE_MIN = 20
+BRUSH_SIZE_MAX = 150
+BRUSH_SIZE_STEP = 10
+TEMPERATURE_BRUSH_STEP = 5.0  # 브러쉬로 변화시킬 온도
+
+# 온도 스케일 (표시할 온도 값들)
+temperature_scale = 5.0  # 한 칸당 5도씩 변화
+
+# 온도 반응 상태 (디버깅용)
+current_temp_at_worm = DEFAULT_TEMPERATURE
+temp_reaction = "중립"  # "만족", "중립", "회피"
+
+# 선호 온도 입력 모드
+input_mode = False
+input_text = ""
+
+# 마우스 클릭 상태
+mouse_pressed = False
+
+# 키보드 상태 추적
+keys_pressed = set()
+
+# ----------------------------
 # IK(벌레 본체) 관련 클래스
 # ----------------------------
 class InverseKinematicsSegment:
@@ -103,6 +141,139 @@ class InverseKinematicsChain:
             segment.update()
 
 worm_chain = InverseKinematicsChain(200, 1)
+
+# ----------------------------
+# 온도 관련 함수
+# ----------------------------
+def get_temperature_at_position(x, y):
+    """특정 위치의 온도 반환"""
+    # 주변 온도 소스들의 영향을 계산
+    if len(temperature_map) == 0:
+        return DEFAULT_TEMPERATURE
+    
+    # 가장 가까운 온도 포인트 찾기
+    min_distance = float('inf')
+    nearest_temp = DEFAULT_TEMPERATURE
+    
+    for (tx, ty), temp in temperature_map.items():
+        distance = math.sqrt((x - tx)**2 + (y - ty)**2)
+        # 브러쉬 크기 내에 있으면 해당 온도 적용
+        if distance < brush_size:
+            # 거리에 따라 온도 보간
+            weight = 1 - (distance / brush_size)
+            if distance < min_distance:
+                min_distance = distance
+                nearest_temp = DEFAULT_TEMPERATURE + (temp - DEFAULT_TEMPERATURE) * weight
+    
+    return nearest_temp if min_distance < brush_size else DEFAULT_TEMPERATURE
+
+def apply_temperature_brush(x, y, mode):
+    """브러쉬로 온도 적용"""
+    if mode == 'erase':
+        # 지우기 모드: 브러쉬 영역 내의 모든 온도 포인트 제거
+        to_remove = []
+        for (px, py) in temperature_map.keys():
+            distance = math.sqrt((x - px)**2 + (y - py)**2)
+            if distance <= brush_size:
+                to_remove.append((px, py))
+        
+        for pos in to_remove:
+            del temperature_map[pos]
+    else:
+        # 가열/냉각 모드: 브러쉬 영역 내의 포인트들에 온도 적용
+        step = 10  # 온도 맵 해상도
+        for dx in range(-brush_size, brush_size, step):
+            for dy in range(-brush_size, brush_size, step):
+                px, py = x + dx, y + dy
+                distance = math.sqrt(dx**2 + dy**2)
+                
+                if distance <= brush_size:
+                    current_temp = temperature_map.get((px, py), DEFAULT_TEMPERATURE)
+                    
+                    if mode == 'heat':
+                        new_temp = min(current_temp + temperature_scale, TEMPERATURE_MAX)
+                    else:  # cool
+                        new_temp = max(current_temp - temperature_scale, TEMPERATURE_MIN)
+                    
+                    temperature_map[(px, py)] = new_temp
+
+def draw_temperature_map():
+    """온도 맵 시각화"""
+    if not debug_mode or len(temperature_map) == 0:
+        return
+    
+    # 온도 맵을 반투명 오버레이로 표시
+    temp_surface = pygame.Surface((WINDOW_WIDTH - NEURON_PANEL_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+    font = pygame.font.SysFont("malgungothic,arial", 10)
+    
+    # 온도 포인트를 그리드로 그룹화
+    temp_grid = {}
+    grid_size = 30  # 그리드 크기
+    
+    for (x, y), temp in temperature_map.items():
+        if 0 <= x < WINDOW_WIDTH - NEURON_PANEL_WIDTH and 0 <= y < WINDOW_HEIGHT:
+            grid_x = int(x / grid_size) * grid_size
+            grid_y = int(y / grid_size) * grid_size
+            
+            # 그리드 셀의 평균 온도 계산
+            if (grid_x, grid_y) not in temp_grid:
+                temp_grid[(grid_x, grid_y)] = []
+            temp_grid[(grid_x, grid_y)].append(temp)
+    
+    # 그리드 셀별로 온도 표시
+    for (grid_x, grid_y), temps in temp_grid.items():
+        avg_temp = sum(temps) / len(temps)
+        
+        # 온도에 따라 색상 결정
+        # 기본 온도(20도)를 중간으로 설정
+        # -100 ~ 20: 파랑 -> 흰색
+        # 20 ~ 100: 흰색 -> 빨강
+        if avg_temp < DEFAULT_TEMPERATURE:
+            # 차가움: 파랑 -> 흰색
+            temp_ratio = (avg_temp - TEMPERATURE_MIN) / (DEFAULT_TEMPERATURE - TEMPERATURE_MIN)
+            temp_ratio = max(0, min(1, temp_ratio))  # 0~1 사이로 제한
+            r = int(255 * temp_ratio)
+            g = int(255 * temp_ratio)
+            b = 255
+        else:
+            # 뜨거움: 흰색 -> 빨강
+            temp_ratio = (avg_temp - DEFAULT_TEMPERATURE) / (TEMPERATURE_MAX - DEFAULT_TEMPERATURE)
+            temp_ratio = max(0, min(1, temp_ratio))  # 0~1 사이로 제한
+            r = 255
+            g = int(255 * (1 - temp_ratio))
+            b = int(255 * (1 - temp_ratio))
+        
+        # 반투명 사각형 그리기
+        pygame.draw.rect(temp_surface, (r, g, b, 80), 
+                        (grid_x, grid_y, grid_size, grid_size))
+        
+        # 온도 텍스트 표시 (흰색)
+        temp_text = font.render(f"{int(avg_temp)}°", True, (255, 255, 255))
+        temp_surface.blit(temp_text, (grid_x + 3, grid_y + 8))
+    
+    screen.blit(temp_surface, (0, 0))
+
+def draw_brush_cursor(pos):
+    """브러쉬 커서 표시"""
+    if not debug_mode:
+        return
+    
+    x, y = pos
+    if x >= WINDOW_WIDTH - NEURON_PANEL_WIDTH:
+        return
+    
+    # 브러쉬 크기 표시
+    if brush_mode == 'heat':
+        color = (255, 100, 100, 100)  # 빨강 (뜨겁게)
+    elif brush_mode == 'cool':
+        color = (100, 100, 255, 100)  # 파랑 (차갑게)
+    else:  # erase
+        color = (150, 150, 150, 100)  # 회색 (지우기)
+    
+    brush_surface = pygame.Surface((brush_size * 2, brush_size * 2), pygame.SRCALPHA)
+    pygame.draw.circle(brush_surface, color, (brush_size, brush_size), brush_size, 2)
+    screen.blit(brush_surface, (x - brush_size, y - brush_size))
+
 
 # ----------------------------
 # 먹이 관련 함수
@@ -185,7 +356,8 @@ def draw_worm():
 # ----------------------------
 def draw_brain_activity(brain, surface, start_x, start_y, width, height):
     # 한글 폰트 설정 (Windows 기본 한글 폰트)
-    font = pygame.font.SysFont("malgungothic,arial", 12)
+    font = pygame.font.SysFont("malgungothic,arial", 16)
+    neuron_name_font = pygame.font.SysFont("malgungothic,arial", 9)  # 뉴런 이름용 작은 폰트
     # PostSynaptic에서 근육을 제외한 뉴런만 필터링
     muscle_prefixes = ['MDL', 'MDR', 'MVL', 'MVR']
     neurons = sorted([n for n in brain.PostSynaptic.keys() 
@@ -195,8 +367,8 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
     max_rows = 20
     rows = min(max_rows, total_neurons)
     cols = math.ceil(total_neurons / rows)
-    margin = 20
-    circle_radius = min(8.5, (width - margin * 2) // (cols * 2))
+    margin = 22.5
+    circle_radius = 9  # 뉴런 원 크기 증가
     
     # 뉴런 표시를 오른쪽으로 이동 (왼쪽에 디버깅 정보 공간 확보)
     neuron_offset_x = 200  # 왼쪽에서 200픽셀 떨어진 곳부터 시작
@@ -236,18 +408,87 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
         sense_surf = font.render(f"먹이 감지 범위: {FOOD_SENSE_DISTANCE}px", True, (150, 255, 150))
         surface.blit(sense_surf, (start_x + 8, current_y))
         current_y += 16
+        
+        # 온도 정보 표시
+        current_y += 8  # 빈 줄
+        temp_title_surf = font.render("=== 온도 정보 ===", True, (255, 255, 150))
+        surface.blit(temp_title_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 벌레 위치의 현재 온도
+        current_temp_surf = font.render(f"벌레 위치 온도: {current_temp_at_worm:.1f}°C", True, (255, 200, 100))
+        surface.blit(current_temp_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        pref_temp_surf = font.render(f"선호 온도: {preferred_temperature:.1f}°C", True, (100, 255, 150))
+        surface.blit(pref_temp_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # P 키 안내
+        pref_hint_surf = font.render("(P키: 선호 온도 변경)", True, (150, 200, 150))
+        surface.blit(pref_hint_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 온도 차이
+        temp_diff = abs(current_temp_at_worm - preferred_temperature)
+        diff_surf = font.render(f"온도 차이: {temp_diff:.1f}°C", True, (200, 200, 200))
+        surface.blit(diff_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 온도 반응 (색상으로 구분)
+        reaction_colors = {
+            "만족": (100, 255, 100),  # 초록
+            "중립": (200, 200, 200),  # 회색
+            "회피": (255, 100, 100)   # 빨강
+        }
+        reaction_color = reaction_colors.get(temp_reaction, (200, 200, 200))
+        reaction_surf = font.render(f"온도 반응: {temp_reaction}", True, reaction_color)
+        surface.blit(reaction_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        current_y += 8  # 빈 줄
+        
+        # 브러쉬 정보
+        brush_title_surf = font.render("=== 브러쉬 ===", True, (200, 200, 255))
+        surface.blit(brush_title_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        brush_mode_text = {'heat': '가열', 'cool': '냉각', 'erase': '지우기'}[brush_mode]
+        brush_color_map = {'heat': (255, 100, 100), 'cool': (100, 100, 255), 'erase': (150, 150, 150)}
+        brush_color = brush_color_map[brush_mode]
+        brush_mode_surf = font.render(f"모드: {brush_mode_text} (A/S/D)", True, brush_color)
+        surface.blit(brush_mode_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        brush_size_surf = font.render(f"크기: {brush_size}px (UP/DOWN)", True, (180, 180, 180))
+        surface.blit(brush_size_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 온도 스케일 표시
+        scale_surf = font.render(f"스케일: ±{temperature_scale:.1f}° (LEFT/RIGHT)", True, (180, 180, 180))
+        surface.blit(scale_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # 온도 맵 포인트 수
+        temp_points_surf = font.render(f"온도 포인트: {len(temperature_map)}", True, (150, 150, 150))
+        surface.blit(temp_points_surf, (start_x + 8, current_y))
+        current_y += 16
     
     # 모드 표시 (항상 표시)
-    mode_text = "디버깅 모드 (Press 1: 일반, 2: 디버깅)" if debug_mode else "일반 모드 (Press 1: 일반, 2: 디버깅)"
+    if debug_mode:
+        mode_text = "디버깅 모드 (1: 일반, 2: 디버깅, A/S/D: 브러쉬, 드래그: 페인트)"
+    else:
+        mode_text = "일반 모드 (1: 일반, 2: 디버깅, 클릭: 먹이)"
     mode_surf = font.render(mode_text, True, (255, 200, 100))
     surface.blit(mode_surf, (start_x + 8, current_y))
 
-    offset_y = start_y + 60  # 뉴런 표시 위치를 밑으로 내림
+    # 뉴런을 오른쪽 하단에 배치
+    neuron_start_y = height - (rows * (2 * circle_radius + margin)) - margin
     for i, neuron in enumerate(neurons):
         row = i % rows
         col = i // rows
         cx = start_x + neuron_offset_x + margin + col * (2 * circle_radius + margin)
-        cy = offset_y + row * (2 * circle_radius + margin)
+        cy = start_y + neuron_start_y + row * (2 * circle_radius + margin)
 
         activity = brain.PostSynaptic[neuron][brain.CurrentSignalIntensityIndex]
         if activity > brain.FireThreshold:
@@ -260,7 +501,7 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
             color = (80, 80, 80)
 
         pygame.draw.circle(surface, color, (cx, cy), circle_radius)
-        name_surf = font.render(neuron, True, (230, 230, 230))
+        name_surf = neuron_name_font.render(neuron, True, (230, 230, 230))
         surface.blit(name_surf, (cx - name_surf.get_width() // 2, cy - circle_radius - 12))
 
 # ----------------------------
@@ -268,6 +509,30 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
 # ----------------------------
 def update_brain():
     global target_angle, target_speed, speed_change_rate
+    global current_temp_at_worm, temp_reaction
+    
+    # 벌레 위치의 온도 확인
+    worm_temp = get_temperature_at_position(target_position[0], target_position[1])
+    current_temp_at_worm = worm_temp
+    temp_diff = abs(worm_temp - preferred_temperature)
+    
+    # AFD 뉴런이 있는지 확인하고 자극
+    if 'AFDL' in brain.PostSynaptic:
+        if temp_diff > 5.0:
+            # 온도 차이가 크면 강하게 자극 (회피)
+            brain.PostSynaptic['AFDL'][brain.NextSignalIntensityIndex] += 10
+            if 'AFDR' in brain.PostSynaptic:
+                brain.PostSynaptic['AFDR'][brain.NextSignalIntensityIndex] += 10
+            temp_reaction = "회피"
+        elif temp_diff < 1.0:
+            # 선호 온도에 가까우면 약하게 자극 (만족)
+            brain.PostSynaptic['AFDL'][brain.NextSignalIntensityIndex] += 2
+            if 'AFDR' in brain.PostSynaptic:
+                brain.PostSynaptic['AFDR'][brain.NextSignalIntensityIndex] += 2
+            temp_reaction = "만족"
+        else:
+            temp_reaction = "중립"
+    
     brain.update()
     scaling_factor = 20
     new_angle_offset = (brain.AccumulatedLeftMusclesSignal - brain.AccumulatedRightMusclesSignal) / scaling_factor
@@ -400,12 +665,71 @@ while True:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = event.pos
             if mx < WINDOW_WIDTH - NEURON_PANEL_WIDTH:
-                add_food([mx, my])
+                if not debug_mode:
+                    # 일반 모드에서만 먹이 추가
+                    add_food([mx, my])
+                elif debug_mode and event.button == 1:
+                    # 디버깅 모드에서 왼쪽 마우스 버튼으로 온도 조절
+                    mouse_pressed = True
+                    apply_temperature_brush(mx, my, brush_mode)
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                mouse_pressed = False
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_1:
-                debug_mode = False  # 일반 모드
-            elif event.key == pygame.K_2:
-                debug_mode = True  # 디버깅 모드
+            if input_mode:
+                # 선호 온도 입력 모드
+                if event.key == pygame.K_RETURN:
+                    # Enter 키: 입력 완료
+                    try:
+                        new_temp = float(input_text)
+                        if 8.0 <= new_temp <= 25.0:
+                            preferred_temperature = new_temp
+                        input_text = ""
+                        input_mode = False
+                    except ValueError:
+                        input_text = ""
+                        input_mode = False
+                elif event.key == pygame.K_ESCAPE:
+                    # ESC 키: 입력 취소
+                    input_text = ""
+                    input_mode = False
+                elif event.key == pygame.K_BACKSPACE:
+                    # Backspace: 한 글자 삭제
+                    input_text = input_text[:-1]
+                elif event.unicode in '0123456789.-':
+                    # 숫자, 소수점, 마이너스만 입력 가능
+                    if len(input_text) < 10:  # 최대 10자
+                        input_text += event.unicode
+            else:
+                # 일반 키 입력
+                if event.key == pygame.K_1:
+                    debug_mode = False  # 일반 모드
+                elif event.key == pygame.K_2:
+                    debug_mode = True  # 디버깅 모드
+                elif event.key == pygame.K_p and debug_mode:
+                    # P 키: 선호 온도 설정 모드
+                    input_mode = True
+                    input_text = ""
+                elif event.key == pygame.K_a and debug_mode:
+                    brush_mode = 'heat'  # 온도 높이기 브러쉬
+                elif event.key == pygame.K_s and debug_mode:
+                    brush_mode = 'cool'  # 온도 낮추기 브러쉬
+                elif event.key == pygame.K_d and debug_mode:
+                    brush_mode = 'erase'  # 온도 지우기 브러쉬
+                elif event.key == pygame.K_UP and debug_mode:
+                    brush_size = min(brush_size + 10, BRUSH_SIZE_MAX)  # 브러쉬 크기 증가
+                elif event.key == pygame.K_DOWN and debug_mode:
+                    brush_size = max(brush_size - 10, BRUSH_SIZE_MIN)  # 브러쉬 크기 감소
+                elif event.key == pygame.K_LEFT and debug_mode:
+                    temperature_scale = max(temperature_scale - 1.0, 1.0)  # 온도 스케일 감소
+                elif event.key == pygame.K_RIGHT and debug_mode:
+                    temperature_scale = min(temperature_scale + 1.0, 60.0)  # 온도 스케일 증가
+    
+    # 마우스를 누르고 있을 때 드래그로 온도 조절
+    if debug_mode and mouse_pressed:
+        mx, my = pygame.mouse.get_pos()
+        if mx < WINDOW_WIDTH - NEURON_PANEL_WIDTH:
+            apply_temperature_brush(mx, my, brush_mode)
 
     screen.fill((0, 0, 0))
     
@@ -418,10 +742,45 @@ while True:
         last_brain_update = current_time
     
     update()
+    draw_temperature_map()  # 온도 맵 시각화
     draw_food()
     draw_worm()
     draw_debug_info()  # 디버깅 모드 정보 표시
     draw_brain_activity(brain, screen, WINDOW_WIDTH - NEURON_PANEL_WIDTH, 0, NEURON_PANEL_WIDTH, WINDOW_HEIGHT)
+    
+    # 디버깅 모드에서 브러쉬 커서 표시
+    if debug_mode:
+        draw_brush_cursor(pygame.mouse.get_pos())
+    
+    # 선호 온도 입력 모드 표시
+    if input_mode:
+        # 반투명 배경
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
+        pygame.draw.rect(overlay, (0, 0, 0, 180), (0, 0, WINDOW_WIDTH, WINDOW_HEIGHT))
+        screen.blit(overlay, (0, 0))
+        
+        # 입력 창
+        input_font = pygame.font.SysFont("malgungothic,arial", 24)
+        title_surf = input_font.render("선호 온도 설정 (8 ~ 25°C)", True, (255, 255, 255))
+        title_rect = title_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 50))
+        screen.blit(title_surf, title_rect)
+        
+        # 입력 텍스트
+        input_display = input_text if input_text else "0"
+        input_surf = input_font.render(f"{input_display}°C", True, (255, 255, 100))
+        input_rect = input_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+        
+        # 입력 박스
+        box_rect = pygame.Rect(WINDOW_WIDTH // 2 - 150, WINDOW_HEIGHT // 2 - 25, 300, 50)
+        pygame.draw.rect(screen, (50, 50, 50), box_rect)
+        pygame.draw.rect(screen, (255, 255, 100), box_rect, 2)
+        screen.blit(input_surf, input_rect)
+        
+        # 안내 텍스트
+        hint_font = pygame.font.SysFont("malgungothic,arial", 16)
+        hint_surf = hint_font.render("Enter: 확인 | ESC: 취소", True, (200, 200, 200))
+        hint_rect = hint_surf.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 50))
+        screen.blit(hint_surf, hint_rect)
 
     pygame.display.flip()
     clock.tick(60 * GAME_SPEED)
