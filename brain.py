@@ -1,9 +1,14 @@
 # ============================================================
-# Brain.py - C. elegans 신경망 시뮬레이션
+# Brain.py - C. elegans 신경망 시뮬레이션 (LIF 모델)
 # ============================================================
 # 
 # 이 파일은 예쁜꼬마선충(C. elegans)의 302개 뉴런으로 구성된
 # 커넥톰(connectome)을 시뮬레이션합니다.
+#
+# 모델: LIF (Leaky Integrate-and-Fire)
+# - 신호 누적 (Integrate)
+# - 시간 감쇠 (Leaky)
+# - 임계값 발화 (Fire)
 #
 # Axon: 축삭돌기 (neuron에서 신호를 전달하는 구조)
 # ============================================================
@@ -13,11 +18,12 @@ import random
 
 class Brain:
     """
-    C. elegans의 302개 뉴런 신경망을 시뮬레이션하는 클래스
+    C. elegans의 302개 뉴런 신경망을 시뮬레이션하는 클래스 (LIF 모델)
     
     주요 기능:
     - 뉴런 간 연결(connectome) 관리
     - 신호 전달 및 누적
+    - 시간에 따른 신호 감쇠 (Leaky)
     - 근육 신호 계산 (좌/우 근육 활성화)
     - 감각 뉴런 자극 처리
     
@@ -25,6 +31,7 @@ class Brain:
         weights: 뉴런 간 연결 가중치 (constants.py에서 로드)
         PostSynaptic: 각 뉴런의 신호 강도 (double buffering)
         FireThreshold: 뉴런 발화 임계값 (30)
+        DecayRate: 신호 감쇠율 (0.95 = 5% 감쇠)
         AccumulatedLeftMusclesSignal: 좌측 근육 신호 누적
         AccumulatedRightMusclesSignal: 우측 근육 신호 누적
     """
@@ -40,6 +47,10 @@ class Brain:
         
         # 뉴런 발화 임계값
         self.FireThreshold = 30
+        
+        # LIF 모델 파라미터: 신호 감쇠율
+        # 0.95 = 매 업데이트마다 5% 감쇠 (tau ≈ 20 time steps)
+        self.DecayRate = 0.95
         
         # 좌우 근육 신호 누적 (이동 방향 결정에 사용)
         self.AccumulatedLeftMusclesSignal = 0
@@ -453,21 +464,54 @@ class Brain:
   # PVDL PVDR nociceptors
   # ASEL ASER gustatory neurons
 
-    def run_connectome(self): #시냅스 후에 뉴런들 검사해서 임계값 넘은 뉴런이면 발화시킴
+    def run_connectome(self):
+        """
+        Connectome을 실행하여 신경망 신호를 전파합니다 (LIF 모델)
+        
+        LIF (Leaky Integrate-and-Fire) 모델:
+        1. **Leaky**: 모든 뉴런의 신호가 시간에 따라 감쇠 (V *= DecayRate)
+        2. **Integrate**: 입력 신호를 누적
+        3. **Fire**: 임계값을 넘으면 발화하고 신호 초기화
+        
+        프로세스:
+        1. 신호 감쇠 적용 (Leaky)
+        2. 임계값 검사 및 발화 (Fire)
+        3. 근육 신호 누적
+        4. 버퍼 스왑 (double buffering)
+        """
+        
+        # =============================================
+        # 1단계: 신호 감쇠 적용 (LIF 모델의 Leaky 특성)
+        # =============================================
+        # 모든 뉴런의 신호가 시간에 따라 자연스럽게 감쇠됨
+        # 이는 생물학적 뉴런의 막전위 누출 전류를 모사함
         for PostSynaptic in self.PostSynaptic:
-            # 근육은 발화할 수 없음 - JavaScript의 muscles 체크 로직 추가
+            self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] *= self.DecayRate
+        
+        # =============================================
+        # 2단계: 임계값 검사 및 발화
+        # =============================================
+        for PostSynaptic in self.PostSynaptic:
+            # 근육은 발화할 수 없음 (근육은 신호를 받기만 함)
             is_muscle = False
             for muscle_prefix in self.MusclesCategory:
                 if PostSynaptic.startswith(muscle_prefix):
                     is_muscle = True
                     break
             
+            # 임계값을 넘은 뉴런만 발화
             if not is_muscle and self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] > self.FireThreshold:
                 self.fire_neuron(PostSynaptic)
         
+        # =============================================
+        # 3단계: 근육 신호 누적 및 초기화
+        # =============================================
         self.accumulate_signal()
         
-        # 시냅스 후 뉴런의 신호 강도를 다음 신호 강도로 이동
+        # =============================================
+        # 4단계: Double buffering (버퍼 스왑)
+        # =============================================
+        # 다음 프레임을 위해 버퍼를 교체
         for PostSynaptic in self.PostSynaptic:
             self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] = self.PostSynaptic[PostSynaptic][self.NextSignalIntensityIndex]
         
