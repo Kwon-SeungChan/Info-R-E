@@ -1,13 +1,15 @@
 # ============================================================
-# Brain.py - C. elegans 신경망 시뮬레이션 (LIF 모델)
+# Brain.py - C. elegans 신경망 시뮬레이션 (AdEx 모델)
 # ============================================================
 # 
 # 이 파일은 예쁜꼬마선충(C. elegans)의 302개 뉴런으로 구성된
 # 커넥톰(connectome)을 시뮬레이션합니다.
 #
-# 모델: LIF (Leaky Integrate-and-Fire)
+# 모델: AdEx (Adaptive Exponential Integrate-and-Fire)
 # - 신호 누적 (Integrate)
 # - 시간 감쇠 (Leaky)
+# - 지수적 급등 (Exponential spike)
+# - 적응 전류 (Adaptation) - 연속 발화 시 피로도
 # - 임계값 발화 (Fire)
 #
 # Axon: 축삭돌기 (neuron에서 신호를 전달하는 구조)
@@ -15,23 +17,30 @@
 
 import constants
 import random
+import math
 
 class Brain:
     """
-    C. elegans의 302개 뉴런 신경망을 시뮬레이션하는 클래스 (LIF 모델)
+    C. elegans의 302개 뉴런 신경망을 시뮬레이션하는 클래스 (AdEx 모델)
     
     주요 기능:
     - 뉴런 간 연결(connectome) 관리
     - 신호 전달 및 누적
     - 시간에 따른 신호 감쇠 (Leaky)
+    - 지수적 스파이크 상승 (Exponential)
+    - 적응 전류를 통한 피로도 표현 (Adaptation)
     - 근육 신호 계산 (좌/우 근육 활성화)
     - 감각 뉴런 자극 처리
     
     속성:
         weights: 뉴런 간 연결 가중치 (constants.py에서 로드)
         PostSynaptic: 각 뉴런의 신호 강도 (double buffering)
+        AdaptationCurrent: 각 뉴런의 적응 전류 (w)
         FireThreshold: 뉴런 발화 임계값 (30)
         DecayRate: 신호 감쇠율 (0.95 = 5% 감쇠)
+        DeltaT: 지수적 스파이크 급등 파라미터 (2.0)
+        AdaptationTimeConstant: 적응 전류 감쇠 시간 상수 (0.98)
+        AdaptationIncrement: 발화 시 적응 전류 증가량 (5.0)
         AccumulatedLeftMusclesSignal: 좌측 근육 신호 누적
         AccumulatedRightMusclesSignal: 우측 근육 신호 누적
     """
@@ -48,9 +57,27 @@ class Brain:
         # 뉴런 발화 임계값
         self.FireThreshold = 30
         
-        # LIF 모델 파라미터: 신호 감쇠율
+        # ========================================
+        # AdEx 모델 파라미터
+        # ========================================
+        
+        # 기본 감쇠율 (Leaky)
         # 0.95 = 매 업데이트마다 5% 감쇠 (tau ≈ 20 time steps)
         self.DecayRate = 0.95
+        
+        # 지수적 스파이크 급등 파라미터 (Exponential)
+        # 임계값 근처에서 전압이 급격히 상승하는 정도
+        self.DeltaT = 2.0
+        self.RheobaseThreshold = 20.0  # 지수 항 시작 임계값
+        
+        # 적응 전류 파라미터 (Adaptation)
+        # 연속 발화 시 뉴런이 "피곤해지는" 효과
+        self.AdaptationTimeConstant = 0.98  # 적응 전류 감쇠율
+        self.AdaptationIncrement = 5.0      # 발화 시 적응 전류 증가량
+        
+        # 각 뉴런의 적응 전류 (w)
+        # 형식: {neuron_name: adaptation_current}
+        self.AdaptationCurrent = {}
         
         # 좌우 근육 신호 누적 (이동 방향 결정에 사용)
         self.AccumulatedLeftMusclesSignal = 0
@@ -408,6 +435,8 @@ class Brain:
         # 모든 뉴런을 PostSynaptic에 등록 (double buffering: [current, next])
         for neuron in neuron_names:
             self.PostSynaptic[neuron] = [0, 0]
+            # AdEx 모델을 위한 적응 전류 초기화
+            self.AdaptationCurrent[neuron] = 0
         
         # Connectome을 weights의 키로 채움 (연결된 뉴런 목록)
         for PreSynaptic in self.weights:
@@ -466,30 +495,59 @@ class Brain:
 
     def run_connectome(self):
         """
-        Connectome을 실행하여 신경망 신호를 전파합니다 (LIF 모델)
+        Connectome을 실행하여 신경망 신호를 전파합니다 (AdEx 모델)
         
-        LIF (Leaky Integrate-and-Fire) 모델:
+        AdEx (Adaptive Exponential Integrate-and-Fire) 모델:
         1. **Leaky**: 모든 뉴런의 신호가 시간에 따라 감쇠 (V *= DecayRate)
-        2. **Integrate**: 입력 신호를 누적
-        3. **Fire**: 임계값을 넘으면 발화하고 신호 초기화
+        2. **Exponential**: 임계값 근처에서 지수적으로 급등 (스파이크 상승 가속화)
+        3. **Adaptation**: 적응 전류(w)가 신호를 억제하고 점진적으로 감소
+        4. **Integrate**: 입력 신호를 누적
+        5. **Fire**: 임계값을 넘으면 발화하고 신호 초기화, 적응 전류 증가
         
         프로세스:
         1. 신호 감쇠 적용 (Leaky)
-        2. 임계값 검사 및 발화 (Fire)
-        3. 근육 신호 누적
-        4. 버퍼 스왑 (double buffering)
+        2. 지수적 스파이크 급등 적용 (Exponential)
+        3. 적응 전류 차감 및 감쇠 (Adaptation)
+        4. 임계값 검사 및 발화 (Fire)
+        5. 근육 신호 누적
+        6. 버퍼 스왑 (double buffering)
         """
         
         # =============================================
-        # 1단계: 신호 감쇠 적용 (LIF 모델의 Leaky 특성)
+        # 1단계: 기본 감쇠 적용 (Leaky)
         # =============================================
         # 모든 뉴런의 신호가 시간에 따라 자연스럽게 감쇠됨
-        # 이는 생물학적 뉴런의 막전위 누출 전류를 모사함
         for PostSynaptic in self.PostSynaptic:
             self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] *= self.DecayRate
         
         # =============================================
-        # 2단계: 임계값 검사 및 발화
+        # 2단계: 지수적 스파이크 급등 (Exponential)
+        # =============================================
+        # 임계값 근처에서 전압이 급격히 상승하여 스파이크를 생성
+        # 이는 실제 뉴런의 나트륨 채널 급속 개방을 모사함
+        for PostSynaptic in self.PostSynaptic:
+            V = self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex]
+            
+            # 임계값 근처에서만 지수 항 적용 (overflow 방지)
+            if V > self.RheobaseThreshold and V < self.FireThreshold:
+                # Exponential term: DeltaT * exp((V - V_rheobase) / DeltaT)
+                exponential_term = self.DeltaT * math.exp((V - self.RheobaseThreshold) / self.DeltaT)
+                self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] += exponential_term
+        
+        # =============================================
+        # 3단계: 적응 전류 적용 및 감쇠 (Adaptation)
+        # =============================================
+        # 각 뉴런의 적응 전류(w)가 신호를 억제하고, 시간에 따라 서서히 감소
+        # 이는 뉴런이 연속 발화 후 "피곤해지는" 효과를 표현
+        for PostSynaptic in self.PostSynaptic:
+            # 적응 전류만큼 신호 감소 (억제 효과)
+            self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] -= self.AdaptationCurrent[PostSynaptic]
+            
+            # 적응 전류 자체도 시간에 따라 감쇠 (회복)
+            self.AdaptationCurrent[PostSynaptic] *= self.AdaptationTimeConstant
+        
+        # =============================================
+        # 4단계: 임계값 검사 및 발화 (Fire)
         # =============================================
         for PostSynaptic in self.PostSynaptic:
             # 근육은 발화할 수 없음 (근육은 신호를 받기만 함)
@@ -502,14 +560,16 @@ class Brain:
             # 임계값을 넘은 뉴런만 발화
             if not is_muscle and self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] > self.FireThreshold:
                 self.fire_neuron(PostSynaptic)
+                # AdEx 추가: 발화 시 적응 전류 증가 (피로도 증가)
+                self.AdaptationCurrent[PostSynaptic] += self.AdaptationIncrement
         
         # =============================================
-        # 3단계: 근육 신호 누적 및 초기화
+        # 5단계: 근육 신호 누적 및 초기화
         # =============================================
         self.accumulate_signal()
         
         # =============================================
-        # 4단계: Double buffering (버퍼 스왑)
+        # 6단계: Double buffering (버퍼 스왑)
         # =============================================
         # 다음 프레임을 위해 버퍼를 교체
         for PostSynaptic in self.PostSynaptic:
@@ -517,7 +577,16 @@ class Brain:
         
         self.CurrentSignalIntensityIndex, self.NextSignalIntensityIndex = swap(self.CurrentSignalIntensityIndex, self.NextSignalIntensityIndex)
 
-    def fire_neuron(self, NeuronToFire):  # 뉴런이 발화하면 다른 신호 퍼뜨리고, 그 뉴런의 누적값 초기화화
+    def fire_neuron(self, NeuronToFire):
+        """
+        뉴런 발화 처리 (AdEx 모델)
+        
+        발화 시:
+        1. 연결된 다른 뉴런들에게 신호 전달
+        2. 자신의 신호 강도를 0으로 초기화
+        
+        Note: 적응 전류 증가는 run_connectome()에서 처리됨
+        """
         # KeyError 방지: NeuronToFire가 weights에 없으면 무시
         if NeuronToFire != 'MVULVA' and NeuronToFire in self.weights:
             self.signal_indensity_accumulate(NeuronToFire)
