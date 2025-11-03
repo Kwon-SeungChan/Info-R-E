@@ -1,34 +1,73 @@
-# Axon : 축삭돌기
+# ============================================================
+# Brain.py - C. elegans 신경망 시뮬레이션
+# ============================================================
+# 
+# 이 파일은 예쁜꼬마선충(C. elegans)의 302개 뉴런으로 구성된
+# 커넥톰(connectome)을 시뮬레이션합니다.
+#
+# Axon: 축삭돌기 (neuron에서 신호를 전달하는 구조)
+# ============================================================
 
 import constants
 import random
 
 class Brain:
+    """
+    C. elegans의 302개 뉴런 신경망을 시뮬레이션하는 클래스
+    
+    주요 기능:
+    - 뉴런 간 연결(connectome) 관리
+    - 신호 전달 및 누적
+    - 근육 신호 계산 (좌/우 근육 활성화)
+    - 감각 뉴런 자극 처리
+    
+    속성:
+        weights: 뉴런 간 연결 가중치 (constants.py에서 로드)
+        PostSynaptic: 각 뉴런의 신호 강도 (double buffering)
+        FireThreshold: 뉴런 발화 임계값 (30)
+        AccumulatedLeftMusclesSignal: 좌측 근육 신호 누적
+        AccumulatedRightMusclesSignal: 우측 근육 신호 누적
+    """
     
     def __init__(self):
+        """Brain 객체 초기화"""
+        # 뉴런 간 연결 가중치 (constants.py에서 로드)
         self.weights = constants.weights
-        self.CurrentSignalIntensityIndex = 0
-        self.NextSignalIntensityIndex = 1
+        
+        # Double buffering: 동시 업데이트를 위해 두 개의 신호 강도 배열 사용
+        self.CurrentSignalIntensityIndex = 0  # 현재 신호 강도 인덱스
+        self.NextSignalIntensityIndex = 1      # 다음 신호 강도 인덱스
+        
+        # 뉴런 발화 임계값
         self.FireThreshold = 30
+        
+        # 좌우 근육 신호 누적 (이동 방향 결정에 사용)
         self.AccumulatedLeftMusclesSignal = 0
         self.AccumulatedRightMusclesSignal = 0
 
-        self.IsStimulatedHungerNeurons = True
-        self.IsStimulatedNoseTouchNeurons = True
-        self.IsStimulatedFoodSenseNeurons = True
+        # 감각 뉴런 자극 플래그
+        self.IsStimulatedHungerNeurons = True      # 배고픔 뉴런 자극 여부
+        self.IsStimulatedNoseTouchNeurons = True   # 코 터치 뉴런 자극 여부
+        self.IsStimulatedFoodSenseNeurons = True   # 먹이 감각 뉴런 자극 여부
         
+        # 각 뉴런의 신호 강도 딕셔너리 (double buffering)
+        # 형식: {neuron_name: [current_signal, next_signal]}
         self.PostSynaptic = {}
 
+        # 뉴런 연결 맵 (connectome)
+        # 형식: {source_neuron: [(target_neuron, weight), ...]}
         self.Connectome = {}
 
+        # 근육 카테고리
         self.MusclesCategory = ['MVU', 'MVL', 'MDL', 'MVR', 'MDR']
-      # MVU: 배쪽 상부 근육 (Muscle Ventral Upper)
-      # MVL: 배쪽 좌측 근육 (Muscle Ventral Left)
-      # MDL: 등쪽 좌측 근육 (Muscle Dorsal Left)
-      # MVR: 배쪽 우측 근육 (Muscle Ventral Right)
-      # MDR: 등쪽 우측 근육 (Muscle Dorsal Right)
+        # MVU: 배쪽 상부 근육 (Muscle Ventral Upper)
+        # MVL: 배쪽 좌측 근육 (Muscle Ventral Left)
+        # MDL: 등쪽 좌측 근육 (Muscle Dorsal Left)
+        # MVR: 배쪽 우측 근육 (Muscle Ventral Right)
+        # MDR: 등쪽 우측 근육 (Muscle Dorsal Right)
       
-        self.AllMuscleList = [  # 모든 근육의 세부적인 목록  # 숫자는 근육의 위치를 나타냄 (07-23)
+        # 모든 근육의 세부 목록 (07-23 번호는 벌레 몸체의 위치를 나타냄)
+        self.AllMuscleList = [
             'MDL07',
             'MDL08',
             'MDL09',
@@ -98,7 +137,10 @@ class Brain:
             'MVR22',
             'MVR23',
         ]
-# 왼쪽 근육들의 전체 목록
+        
+        # ========================================
+        # 왼쪽 근육 목록 (좌측 회전 담당)
+        # ========================================
         self.AllLeftMuscles = [
             'MDR07',
             'MDR08',
@@ -248,26 +290,57 @@ class Brain:
             'MVR18',
             'MVR19',
             'MVR20',
-            'MVR21', # WTF?? Why left muscle in right muscle list??
+            'MVR21', # 주의: MVL21이어야 하는데 MVR21로 잘못 표기됨 (버그)
             'MVR22',
             'MVR23',
         ]
 
-# 시냅스 전 뉴런에 연결된 시냅스 후 뉴런의 신호 강도를 누적하는 함수
+    # ========================================
+    # 신경망 시뮬레이션 메서드
+    # ========================================
+    
     def signal_indensity_accumulate(self, PreSynapticName : str):
+        """
+        시냅스 전 뉴런(PreSynaptic)에서 연결된 모든 시냅스 후 뉴런(PostSynaptic)으로
+        신호를 전달하고 누적합니다.
+        
+        작동 방식:
+        1. PreSynapticName이 weights에 있는지 확인
+        2. 연결된 모든 PostSynaptic 뉴런에 가중치만큼 신호 누적
+        3. NextSignalIntensityIndex를 사용하여 다음 프레임에 적용
+        
+        Args:
+            PreSynapticName: 신호를 발생시키는 뉴런 이름
+        """
         # KeyError 방지: PreSynapticName이 weights에 없으면 무시
         if PreSynapticName not in self.weights:
             return
+        
+        # 연결된 모든 PostSynaptic 뉴런에 신호 전달
         for SynapticsConnectedToPreSynaptic in self.weights[PreSynapticName]:
-            self.PostSynaptic[SynapticsConnectedToPreSynaptic][self.NextSignalIntensityIndex] += self.weights[PreSynapticName][SynapticsConnectedToPreSynaptic]
+            self.PostSynaptic[SynapticsConnectedToPreSynaptic][self.NextSignalIntensityIndex] += \
+                self.weights[PreSynapticName][SynapticsConnectedToPreSynaptic]
 
-    def RandExcite(self):   #뉴런에 무작위로 자극을 주는 역할의 함수
+    def RandExcite(self):
+        """
+        무작위로 뉴런을 자극하여 신경망 초기 활성화를 유도합니다.
+        
+        40개의 무작위 뉴런을 선택하여 신호를 전달함으로써
+        신경망이 정적 상태에서 벗어나 활동하도록 만듭니다.
+        """
         for _ in range(40):
             neurons = list(self.Connectome.keys())
             random_neuron = random.choice(neurons)
             self.signal_indensity_accumulate(random_neuron)
 
     def setup(self):
+        """
+        뇌 신경망을 초기화합니다.
+        
+        302개의 모든 뉴런과 근육을 PostSynaptic 딕셔너리에 등록하고,
+        각각 [current_signal, next_signal] 형태의 double buffering 배열을 생성합니다.
+        또한 weights에서 Connectome 연결 맵을 구축합니다.
+        """
         # JavaScript의 방식대로 명시적으로 모든 뉴런을 초기화
         # 이는 정확한 뉴런 목록을 보장합니다
         neuron_names = ['ADAL', 'ADAR', 'ADEL', 'ADER', 'ADFL', 'ADFR', 'ADLL', 'ADLR', 
@@ -321,40 +394,55 @@ class Brain:
                        'VC1', 'VC2', 'VC3', 'VC4', 'VC5', 'VC6', 'VD1', 'VD10', 'VD11', 
                        'VD12', 'VD13', 'VD2', 'VD3', 'VD4', 'VD5', 'VD6', 'VD7', 'VD8', 'VD9']
         
+        # 모든 뉴런을 PostSynaptic에 등록 (double buffering: [current, next])
         for neuron in neuron_names:
             self.PostSynaptic[neuron] = [0, 0]
         
-        # Connectome을 weights의 키로 채움
+        # Connectome을 weights의 키로 채움 (연결된 뉴런 목록)
         for PreSynaptic in self.weights:
             self.Connectome[PreSynaptic] = True
 
-    def update (self):
+    def update(self):
+        """
+        뇌의 신경망을 한 프레임 업데이트합니다.
         
+        감각 뉴런 자극 처리:
+        1. IsStimulatedHungerNeurons: 배고픔 감각 (RIM, RIC 뉴런)
+        2. IsStimulatedNoseTouchNeurons: 코 터치 감각 (FLP, ASH, IL1V, OLQ 뉴런)
+        3. IsStimulatedFoodSenseNeurons: 먹이 감각 (ADF, ASG, ASI 뉴런)
+        
+        각 자극에 따라 해당 감각 뉴런을 활성화하고 run_connectome()을 호출하여
+        전체 신경망에 신호를 전파합니다.
+        """
+        
+        # 배고픔 뉴런 자극
         if (self.IsStimulatedHungerNeurons):
-            self.signal_indensity_accumulate('RIML')
-            self.signal_indensity_accumulate('RIMR')
-            self.signal_indensity_accumulate('RICL')
-            self.signal_indensity_accumulate('RICR')
+            self.signal_indensity_accumulate('RIML')  # 링 인터뉴런 (좌)
+            self.signal_indensity_accumulate('RIMR')  # 링 인터뉴런 (우)
+            self.signal_indensity_accumulate('RICL')  # 링 인터뉴런 (좌)
+            self.signal_indensity_accumulate('RICR')  # 링 인터뉴런 (우)
             self.run_connectome()
             
+        # 코 터치(벽 충돌) 뉴런 자극
         if (self.IsStimulatedNoseTouchNeurons):
-            self.signal_indensity_accumulate('FLPR') # 앞쪽 감각
-            self.signal_indensity_accumulate('FLPL')
-            self.signal_indensity_accumulate('ASHL') # 머리 부분 감각
-            self.signal_indensity_accumulate('ASHR')
-            self.signal_indensity_accumulate('IL1VL') # 입 주변 감각
-            self.signal_indensity_accumulate('IL1VR')
-            self.signal_indensity_accumulate('OLQDL') # 외축 감각
-            self.signal_indensity_accumulate('OLQDR')
-            self.signal_indensity_accumulate('OLQVR')
-            self.signal_indensity_accumulate('OLQVL')
+            self.signal_indensity_accumulate('FLPR')  # 앞쪽 감각 (우)
+            self.signal_indensity_accumulate('FLPL')  # 앞쪽 감각 (좌)
+            self.signal_indensity_accumulate('ASHL')  # 머리 부분 감각 (좌)
+            self.signal_indensity_accumulate('ASHR')  # 머리 부분 감각 (우)
+            self.signal_indensity_accumulate('IL1VL') # 입 주변 감각 (좌)
+            self.signal_indensity_accumulate('IL1VR') # 입 주변 감각 (우)
+            self.signal_indensity_accumulate('OLQDL') # 외축 감각 (좌등)
+            self.signal_indensity_accumulate('OLQDR') # 외축 감각 (우등)
+            self.signal_indensity_accumulate('OLQVR') # 외축 감각 (우복)
+            self.signal_indensity_accumulate('OLQVL') # 외축 감각 (좌복)
             self.run_connectome()        
         
+        # 먹이 감각 뉴런 자극
         if (self.IsStimulatedFoodSenseNeurons):
-            self.signal_indensity_accumulate('ADFL') # 냄새 감지
-            self.signal_indensity_accumulate('ADFR')
-            self.signal_indensity_accumulate('ASGR') # 페로몬 감지
-            self.signal_indensity_accumulate('ASGL')
+            self.signal_indensity_accumulate('ADFL')  # 냄새 감지 (좌)
+            self.signal_indensity_accumulate('ADFR')  # 냄새 감지 (우)
+            self.signal_indensity_accumulate('ASGR')  # 페로몬 감지 (우)
+            self.signal_indensity_accumulate('ASGL')  # 페로몬 감지 (좌)
             self.signal_indensity_accumulate('ASIL') # 화학물질 감지
             self.signal_indensity_accumulate('ASIR')
             self.signal_indensity_accumulate('ASJR')
