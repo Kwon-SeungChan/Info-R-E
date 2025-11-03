@@ -555,10 +555,38 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
         surface.blit(title_surf, (start_x + 8, current_y))
         current_y += 16
         
+        # ========================================
+        # AdEx 모델 파라미터
+        # ========================================
         # 발화 임계값
         thresh_surf = font.render(f"FireThreshold: {brain.FireThreshold}", True, (200, 200, 200))
         surface.blit(thresh_surf, (start_x + 8, current_y))
         current_y += 16
+        
+        # DecayRate (신호 감쇠율)
+        decay_surf = font.render(f"DecayRate: {brain.DecayRate}", True, (200, 200, 200))
+        surface.blit(decay_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # RheobaseThreshold (지수 항 시작 임계값)
+        rheo_surf = font.render(f"RheobaseThreshold: {brain.RheobaseThreshold}", True, (150, 200, 255))
+        surface.blit(rheo_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # AdaptationTimeConstant (적응 전류 감쇠율)
+        adapt_tc_surf = font.render(f"AdaptationTimeConstant: {brain.AdaptationTimeConstant}", True, (255, 180, 120))
+        surface.blit(adapt_tc_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # AdaptationIncrement (발화 시 피로도 증가)
+        adapt_inc_surf = font.render(f"AdaptationIncrement: {brain.AdaptationIncrement}", True, (255, 150, 150))
+        surface.blit(adapt_inc_surf, (start_x + 8, current_y))
+        current_y += 16
+        
+        # ========================================
+        # 벌레 상태 정보
+        # ========================================
+        current_y += 8  # 빈 줄
         
         # 배고픔 수치 표시
         hungry_surf = font.render(f"배고픔 (k): {hungry_value:.2f}", True, (100, 255, 100))
