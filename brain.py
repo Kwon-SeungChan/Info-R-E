@@ -81,7 +81,7 @@ class Brain:
         self.dt = 1.0         # 시뮬레이션 타임스텝 (ms)
         
         # 발화 임계값 (실제 스파이크 감지)
-        self.FireThreshold = 30.0  # 스파이크 감지 임계값
+        self.Vth = 30.0  # 스파이크 감지 임계값
         
         # 각 뉴런의 적응 전류 (w)
         # 형식: {neuron_name: adaptation_current}
@@ -540,7 +540,7 @@ class Brain:
             # Exponential term: g_L * delta_T * exp((V - V_T) / delta_T)
             # 오버플로 방지: V가 V_T보다 훨씬 크면 지수 항을 제한
             exponential_term = 0.0
-            if V > self.V_T and V < self.FireThreshold:
+            if V > self.V_T and V < self.Vth:
                 exponent = (V - self.V_T) / self.delta_T
                 # 오버플로 방지: exponent가 10 이상이면 제한
                 if exponent < 10.0:
@@ -548,10 +548,12 @@ class Brain:
                 else:
                     exponential_term = self.g_L * self.delta_T * math.exp(10.0)
             
-            # 시냅스 입력 전류 (I): 다음 프레임에서 받을 신호
-            I = self.PostSynaptic[PostSynaptic][self.NextSignalIntensityIndex]
+            R_membrance = 1.0 / self.g_L  # 막 저항 (MΩ)
             
-            # Euler integration: V_new = V + (dV/dt) * dt
+            # 시냅스 입력 전류 (I): 다음 프레임에서 받을 신호
+            I = self.PostSynaptic[PostSynaptic][self.NextSignalIntensityIndex] / R_membrance
+            
+            # 오일러 적분법(근사): V_new = V + (dV/dt) * dt
             dV_dt = (leak_current + exponential_term - w + I) / self.C_m
             self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] += dV_dt * self.dt
         
@@ -563,7 +565,7 @@ class Brain:
             V = self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex]
             w = self.AdaptationCurrent[PostSynaptic]
             
-            # Euler integration: w_new = w + (dw/dt) * dt
+            # 오일러 적분법(근사): w_new = w + (dw/dt) * dt
             dw_dt = (self.a * (V - self.E_L) - w) / self.tau_w
             self.AdaptationCurrent[PostSynaptic] += dw_dt * self.dt
         
@@ -579,7 +581,7 @@ class Brain:
                     break
             
             # 임계값을 넘은 뉴런만 발화
-            if not is_muscle and self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] > self.FireThreshold:
+            if not is_muscle and self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] > self.Vth:
                 self.fire_neuron(PostSynaptic)
                 # AdEx: 발화 시 전압 리셋 및 적응 전류 증가
                 self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] = self.V_reset

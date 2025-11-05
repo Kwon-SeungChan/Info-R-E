@@ -475,6 +475,14 @@ def draw_adex_parameters():
     screen.blit(gl_surf, (start_x, start_y))
     start_y += line_height
     
+    el_surf = font.render(f"E_L: {brain.E_L:.1f} mV", True, (150, 200, 255))
+    screen.blit(el_surf, (start_x, start_y))
+    start_y += line_height
+    
+    vreset_surf = font.render(f"V_reset: {brain.V_reset:.1f} mV", True, (150, 200, 255))
+    screen.blit(vreset_surf, (start_x, start_y))
+    start_y += line_height
+    
     taum_surf = font.render(f"tau_m: {brain.tau_m:.1f} ms", True, (150, 200, 255))
     screen.blit(taum_surf, (start_x, start_y))
     start_y += line_height + 2
@@ -482,6 +490,10 @@ def draw_adex_parameters():
     # 지수 스파이크
     vt_surf = font.render(f"V_T: {brain.V_T:.1f} mV", True, (255, 180, 120))
     screen.blit(vt_surf, (start_x, start_y))
+    start_y += line_height
+    
+    vth_surf = font.render(f"Vth: {brain.Vth:.1f} mV", True, (255, 180, 120))
+    screen.blit(vth_surf, (start_x, start_y))
     start_y += line_height
     
     deltat_surf = font.render(f"delta_T: {brain.delta_T:.1f} mV", True, (255, 180, 120))
