@@ -20,8 +20,8 @@ class BrushMode(Enum):
 # ============================================================
 
 # 창 설정
-WINDOW_WIDTH, WINDOW_HEIGHT = 1800, 900  # 시뮬레이션 창 크기
-NEURON_PANEL_WIDTH = 900  # 오른쪽 뉴런 시각화 패널 너비
+WINDOW_WIDTH, WINDOW_HEIGHT = 1400, 700  # 시뮬레이션 창 크기
+NEURON_PANEL_WIDTH = 700  # 오른쪽 뉴런 시각화 패널 너비
 
 # 먹이 시스템
 FOOD_SENSE_DISTANCE = 200  # 벌레가 먹이를 감지할 수 있는 최대 거리 (픽셀)
@@ -52,10 +52,10 @@ TEMPERATURE_SCALE_MAX = 60.0  # 온도 변화 최대값
 TEMPERATURE_SCALE_INITIAL = 5.0  # 온도 변화 초기값 (브러쉬 1회당 ±5도)
 
 # 뉴런 시각화 설정
-NEURON_MAX_ROWS = 20  # 뉴런 표시 최대 행 수
-NEURON_MARGIN = 22.5  # 뉴런 간 여백
-NEURON_CIRCLE_RADIUS = 9  # 뉴런 원 반지름
-NEURON_OFFSET_X = 200  # 뉴런 표시 시작 X 오프셋
+NEURON_MAX_ROWS = 20  # 뉴런 표시 최대 행 수 (창 크기에 맞게 조정)
+NEURON_MARGIN = 18  # 뉴런 간 여백
+NEURON_CIRCLE_RADIUS = 7  # 뉴런 원 반지름
+NEURON_OFFSET_X = 150  # 뉴런 표시 시작 X 오프셋
 
 # 타이머 설정
 BRAIN_UPDATE_INTERVAL = 500  # 뇌 업데이트 주기 (밀리초) - 0.5초마다 신경망 계산
@@ -322,7 +322,6 @@ def draw_temperature_map():
             if (grid_x, grid_y) not in temperature_grid:
                 temperature_grid[(grid_x, grid_y)] = []
             temperature_grid[(grid_x, grid_y)].append(temperature)
-    print(temperature_grid)
     # 그리드 셀별로 온도 표시
     for (grid_x, grid_y), temperatures in temperature_grid.items():
         average_temperature = sum(temperatures) / len(temperatures)
