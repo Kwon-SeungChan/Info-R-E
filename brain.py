@@ -58,22 +58,30 @@ class Brain:
         self.FireThreshold = 30
         
         # ========================================
-        # AdEx 모델 파라미터
+        # AdEx 모델 파라미터 (생물학적으로 정확한 구현)
         # ========================================
         
-        # 기본 감쇠율 (Leaky)
-        # 0.95 = 매 업데이트마다 5% 감쇠 (tau ≈ 20 time steps)
-        self.DecayRate = 0.95
+        # === 막 특성 (Membrane Properties) ===
+        self.C_m = 200.0      # 막 커패시턴스 (pF)
+        self.g_L = 10.0       # 누수전도도 (nS)
+        self.E_L = 0.0        # 누수 평형 전위 (정규화: 0 = 휴지전위)
+        self.V_reset = 0.0    # 발화 후 리셋 전위
+        self.V_T = 20.0       # 동역학적 임계값 (spike threshold)
         
-        # 지수적 스파이크 급등 파라미터 (Exponential)
-        # 임계값 근처에서 전압이 급격히 상승하는 정도
-        self.DeltaT = 2.0
-        self.RheobaseThreshold = 20.0  # 지수 항 시작 임계값
+        # === 지수 스파이크 항 (Exponential Spike) ===
+        self.delta_T = 2.0    # 스파이크 급등 폭 파라미터 (mV)
         
-        # 적응 전류 파라미터 (Adaptation)
-        # 연속 발화 시 뉴런이 "피곤해지는" 효과
-        self.AdaptationTimeConstant = 0.98  # 적응 전류 감쇠율
-        self.AdaptationIncrement = 5.0      # 발화 시 적응 전류 증가량
+        # === 적응 변수 (Adaptation) ===
+        self.tau_w = 30.0     # 적응 시간 상수 (ms)
+        self.a = 2.0          # 부적응 결합 파라미터 (nS)
+        self.b = 5.0          # 스파이크 발동 적응 증가량 (pA)
+        
+        # === 시간 상수 (Time Constants) ===
+        self.tau_m = self.C_m / self.g_L  # 막 시간 상수 (ms)
+        self.dt = 1.0         # 시뮬레이션 타임스텝 (ms)
+        
+        # 발화 임계값 (실제 스파이크 감지)
+        self.FireThreshold = 30.0  # 스파이크 감지 임계값
         
         # 각 뉴런의 적응 전류 (w)
         # 형식: {neuron_name: adaptation_current}
@@ -495,59 +503,72 @@ class Brain:
 
     def run_connectome(self):
         """
-        Connectome을 실행하여 신경망 신호를 전파합니다 (AdEx 모델)
+        Connectome을 실행하여 신경망 신호를 전파합니다 (AdEx 모델 - 수학적 구현)
         
-        AdEx (Adaptive Exponential Integrate-and-Fire) 모델:
-        1. **Leaky**: 모든 뉴런의 신호가 시간에 따라 감쇠 (V *= DecayRate)
-        2. **Exponential**: 임계값 근처에서 지수적으로 급등 (스파이크 상승 가속화)
-        3. **Adaptation**: 적응 전류(w)가 신호를 억제하고 점진적으로 감소
-        4. **Integrate**: 입력 신호를 누적
-        5. **Fire**: 임계값을 넘으면 발화하고 신호 초기화, 적응 전류 증가
+        AdEx (Adaptive Exponential Integrate-and-Fire) 모델 방정식:
+        
+        막전위 방정식:
+        C_m * dV/dt = -g_L(V - E_L) + g_L*delta_T*exp((V - V_T)/delta_T) - w + I
+        
+        적응 전류 방정식:
+        tau_w * dw/dt = a(V - E_L) - w
+        
+        스파이크 조건:
+        if V > FireThreshold:
+            V ← V_reset
+            w ← w + b
         
         프로세스:
-        1. 신호 감쇠 적용 (Leaky)
-        2. 지수적 스파이크 급등 적용 (Exponential)
-        3. 적응 전류 차감 및 감쇠 (Adaptation)
-        4. 임계값 검사 및 발화 (Fire)
-        5. 근육 신호 누적
-        6. 버퍼 스왑 (double buffering)
+        1. 막전위 업데이트 (Leak current + Exponential term + Input current - Adaptation)
+        2. 적응 전류 업데이트 (Subthreshold adaptation + Decay)
+        3. 임계값 검사 및 발화 (Fire)
+        4. 근육 신호 누적
+        5. 버퍼 스왑 (double buffering)
         """
         
         # =============================================
-        # 1단계: 기본 감쇠 적용 (Leaky)
+        # 1단계: 막전위 업데이트 (Euler method)
         # =============================================
-        # 모든 뉴런의 신호가 시간에 따라 자연스럽게 감쇠됨
-        for PostSynaptic in self.PostSynaptic:
-            self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] *= self.DecayRate
-        
-        # =============================================
-        # 2단계: 지수적 스파이크 급등 (Exponential)
-        # =============================================
-        # 임계값 근처에서 전압이 급격히 상승하여 스파이크를 생성
-        # 이는 실제 뉴런의 나트륨 채널 급속 개방을 모사함
+        # dV/dt = (-g_L(V - E_L) + g_L*delta_T*exp((V-V_T)/delta_T) - w + I) / C_m
         for PostSynaptic in self.PostSynaptic:
             V = self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex]
+            w = self.AdaptationCurrent[PostSynaptic]
             
-            # 임계값 근처에서만 지수 항 적용 (overflow 방지)
-            if V > self.RheobaseThreshold and V < self.FireThreshold:
-                # Exponential term: DeltaT * exp((V - V_rheobase) / DeltaT)
-                exponential_term = self.DeltaT * math.exp((V - self.RheobaseThreshold) / self.DeltaT)
-                self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] += exponential_term
+            # Leak current: -g_L * (V - E_L)
+            leak_current = -self.g_L * (V - self.E_L)
+            
+            # Exponential term: g_L * delta_T * exp((V - V_T) / delta_T)
+            # 오버플로 방지: V가 V_T보다 훨씬 크면 지수 항을 제한
+            exponential_term = 0.0
+            if V > self.V_T and V < self.FireThreshold:
+                exponent = (V - self.V_T) / self.delta_T
+                # 오버플로 방지: exponent가 10 이상이면 제한
+                if exponent < 10.0:
+                    exponential_term = self.g_L * self.delta_T * math.exp(exponent)
+                else:
+                    exponential_term = self.g_L * self.delta_T * math.exp(10.0)
+            
+            # 시냅스 입력 전류 (I): 다음 프레임에서 받을 신호
+            I = self.PostSynaptic[PostSynaptic][self.NextSignalIntensityIndex]
+            
+            # Euler integration: V_new = V + (dV/dt) * dt
+            dV_dt = (leak_current + exponential_term - w + I) / self.C_m
+            self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] += dV_dt * self.dt
         
         # =============================================
-        # 3단계: 적응 전류 적용 및 감쇠 (Adaptation)
+        # 2단계: 적응 전류 업데이트 (Euler method)
         # =============================================
-        # 각 뉴런의 적응 전류(w)가 신호를 억제하고, 시간에 따라 서서히 감소
-        # 이는 뉴런이 연속 발화 후 "피곤해지는" 효과를 표현
+        # dw/dt = (a(V - E_L) - w) / tau_w
         for PostSynaptic in self.PostSynaptic:
-            # 적응 전류만큼 신호 감소 (억제 효과)
-            self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] -= self.AdaptationCurrent[PostSynaptic]
+            V = self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex]
+            w = self.AdaptationCurrent[PostSynaptic]
             
-            # 적응 전류 자체도 시간에 따라 감쇠 (회복)
-            self.AdaptationCurrent[PostSynaptic] *= self.AdaptationTimeConstant
+            # Euler integration: w_new = w + (dw/dt) * dt
+            dw_dt = (self.a * (V - self.E_L) - w) / self.tau_w
+            self.AdaptationCurrent[PostSynaptic] += dw_dt * self.dt
         
         # =============================================
-        # 4단계: 임계값 검사 및 발화 (Fire)
+        # 3단계: 임계값 검사 및 발화 (Fire)
         # =============================================
         for PostSynaptic in self.PostSynaptic:
             # 근육은 발화할 수 없음 (근육은 신호를 받기만 함)
@@ -560,16 +581,17 @@ class Brain:
             # 임계값을 넘은 뉴런만 발화
             if not is_muscle and self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] > self.FireThreshold:
                 self.fire_neuron(PostSynaptic)
-                # AdEx 추가: 발화 시 적응 전류 증가 (피로도 증가)
-                self.AdaptationCurrent[PostSynaptic] += self.AdaptationIncrement
+                # AdEx: 발화 시 전압 리셋 및 적응 전류 증가
+                self.PostSynaptic[PostSynaptic][self.CurrentSignalIntensityIndex] = self.V_reset
+                self.AdaptationCurrent[PostSynaptic] += self.b
         
         # =============================================
-        # 5단계: 근육 신호 누적 및 초기화
+        # 4단계: 근육 신호 누적 및 초기화
         # =============================================
         self.accumulate_signal()
         
         # =============================================
-        # 6단계: Double buffering (버퍼 스왑)
+        # 5단계: Double buffering (버퍼 스왑)
         # =============================================
         # 다음 프레임을 위해 버퍼를 교체
         for PostSynaptic in self.PostSynaptic:
@@ -583,9 +605,9 @@ class Brain:
         
         발화 시:
         1. 연결된 다른 뉴런들에게 신호 전달
-        2. 자신의 신호 강도를 0으로 초기화
+        2. 자신의 신호 강도를 다음 프레임에서 0으로 초기화
         
-        Note: 적응 전류 증가는 run_connectome()에서 처리됨
+        Note: 전압 리셋(V ← V_reset)과 적응 전류 증가(w ← w + b)는 run_connectome()에서 처리됨
         """
         # KeyError 방지: NeuronToFire가 weights에 없으면 무시
         if NeuronToFire != 'MVULVA' and NeuronToFire in self.weights:

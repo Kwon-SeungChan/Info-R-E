@@ -448,6 +448,58 @@ def draw_debug_info():
         pygame.draw.line(screen, (255, 0, 0), (arrow_end_x, arrow_end_y), (tip1_x, tip1_y), 3)
         pygame.draw.line(screen, (255, 0, 0), (arrow_end_x, arrow_end_y), (tip2_x, tip2_y), 3)
 
+def draw_adex_parameters():
+    """
+    메인 화면(왼쪽 상단)에 AdEx 모델 파라미터를 표시합니다.
+    디버그 모드에서만 표시됩니다.
+    """
+    if not debug_mode:
+        return
+    
+    font = pygame.font.SysFont("malgungothic,arial", 11)
+    start_x = 10
+    start_y = 10
+    line_height = 14
+    
+    # 제목
+    title_surf = font.render("=== AdEx Model ===", True, (255, 255, 150))
+    screen.blit(title_surf, (start_x, start_y))
+    start_y += line_height + 3
+    
+    # 막 특성
+    cm_surf = font.render(f"C_m: {brain.C_m:.1f} pF", True, (150, 200, 255))
+    screen.blit(cm_surf, (start_x, start_y))
+    start_y += line_height
+    
+    gl_surf = font.render(f"g_L: {brain.g_L:.1f} nS", True, (150, 200, 255))
+    screen.blit(gl_surf, (start_x, start_y))
+    start_y += line_height
+    
+    taum_surf = font.render(f"tau_m: {brain.tau_m:.1f} ms", True, (150, 200, 255))
+    screen.blit(taum_surf, (start_x, start_y))
+    start_y += line_height + 2
+    
+    # 지수 스파이크
+    vt_surf = font.render(f"V_T: {brain.V_T:.1f} mV", True, (255, 180, 120))
+    screen.blit(vt_surf, (start_x, start_y))
+    start_y += line_height
+    
+    deltat_surf = font.render(f"delta_T: {brain.delta_T:.1f} mV", True, (255, 180, 120))
+    screen.blit(deltat_surf, (start_x, start_y))
+    start_y += line_height + 2
+    
+    # 적응
+    tauw_surf = font.render(f"tau_w: {brain.tau_w:.1f} ms", True, (255, 150, 150))
+    screen.blit(tauw_surf, (start_x, start_y))
+    start_y += line_height
+    
+    a_surf = font.render(f"a: {brain.a:.1f} nS", True, (255, 150, 150))
+    screen.blit(a_surf, (start_x, start_y))
+    start_y += line_height
+    
+    b_surf = font.render(f"b: {brain.b:.1f} pA", True, (255, 150, 150))
+    screen.blit(b_surf, (start_x, start_y))
+
 # ============================================================
 # 벌레 그리기 함수
 # ============================================================
@@ -562,26 +614,9 @@ def draw_brain_activity(brain, surface, start_x, start_y, width, height):
         surface.blit(thresh_surf, (start_x + 8, current_y))
         current_y += 16
         
-        # DecayRate (신호 감쇠율)
-        decay_surf = font.render(f"DecayRate: {brain.DecayRate}", True, (200, 200, 200))
-        surface.blit(decay_surf, (start_x + 8, current_y))
-        current_y += 16
-        
-        # RheobaseThreshold (지수 항 시작 임계값)
-        rheo_surf = font.render(f"RheobaseThreshold: {brain.RheobaseThreshold}", True, (150, 200, 255))
-        surface.blit(rheo_surf, (start_x + 8, current_y))
-        current_y += 16
-        
-        # AdaptationTimeConstant (적응 전류 감쇠율)
-        adapt_tc_surf = font.render(f"AdaptationTimeConstant: {brain.AdaptationTimeConstant}", True, (255, 180, 120))
-        surface.blit(adapt_tc_surf, (start_x + 8, current_y))
-        current_y += 16
-        
-        # AdaptationIncrement (발화 시 피로도 증가)
-        adapt_inc_surf = font.render(f"AdaptationIncrement: {brain.AdaptationIncrement}", True, (255, 150, 150))
-        surface.blit(adapt_inc_surf, (start_x + 8, current_y))
-        current_y += 16
-        
+        # ========================================
+        # 벌레 상태 정보
+        # ========================================
         # ========================================
         # 벌레 상태 정보
         # ========================================
@@ -1082,6 +1117,7 @@ while True:
     draw_food()  # 먹이 그리기
     draw_worm()  # 벌레 그리기
     draw_debug_info()  # 디버그 정보 (감지 범위 등)
+    draw_adex_parameters()  # AdEx 모델 파라미터 표시 (메인 화면 왼쪽 상단)
     draw_brain_activity(brain, screen, WINDOW_WIDTH - NEURON_PANEL_WIDTH, 0, NEURON_PANEL_WIDTH, WINDOW_HEIGHT)  # 뉴런 시각화
     
     # 디버그 모드: 브러쉬 커서 표시
