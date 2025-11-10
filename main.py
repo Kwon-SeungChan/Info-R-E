@@ -2,6 +2,7 @@ import pygame
 import sys
 import random
 import math
+import csv
 from enum import Enum
 from brain import Brain
 
@@ -123,6 +124,12 @@ last_food_sense_time = 0
 brain = Brain()
 brain.setup()
 brain.RandExcite()
+
+# ============================================================
+# 뉴런 전위값 기록용 변수
+# ============================================================
+neuron_voltage_history = []  # 각 프레임의 모든 뉴런 전위값을 저장
+frame_count = 0  # 프레임 카운터
 
 # ============================================================
 # IK(벌레 본체) 클래스
@@ -1007,6 +1014,41 @@ def update():
 worm_chain = InverseKinematicsChain(200, 1)
 
 # ============================================================
+# CSV 저장 함수
+# ============================================================
+def save_neuron_data_to_csv():
+    """
+    기록된 모든 뉴런의 전위값을 CSV 파일로 저장합니다.
+    """
+    if not neuron_voltage_history:
+        print("저장할 데이터가 없습니다.")
+        return
+    
+    # 근육을 제외한 뉴런만 필터링
+    muscle_prefixes = ['MDL', 'MDR', 'MVL', 'MVR']
+    neuron_names = sorted([n for n in brain.PostSynaptic.keys() 
+                          if not any(n.startswith(prefix) for prefix in muscle_prefixes)])
+    
+    filename = "neuron_voltages.csv"
+    
+    try:
+        with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            
+            # 헤더 작성 (프레임, 시간(ms), 뉴런 이름들...)
+            header = ['Frame', 'Time_ms'] + neuron_names
+            writer.writerow(header)
+            
+            # 데이터 작성
+            for frame_data in neuron_voltage_history:
+                writer.writerow(frame_data)
+        
+        print(f"뉴런 데이터가 '{filename}'에 저장되었습니다.")
+        print(f"총 {len(neuron_voltage_history)}개 프레임, {len(neuron_names)}개 뉴런의 데이터가 저장되었습니다.")
+    except Exception as e:
+        print(f"CSV 파일 저장 중 오류 발생: {e}")
+
+# ============================================================
 # 메인 게임 루프
 # ============================================================
 while True:
@@ -1017,6 +1059,8 @@ while True:
     for event in pygame.event.get():
         # 창 닫기
         if event.type == pygame.QUIT:
+            print("시뮬레이터 종료 중...")
+            save_neuron_data_to_csv()
             pygame.quit()
             sys.exit()
         
@@ -1181,3 +1225,20 @@ while True:
     # 음식 감지 자극은 2초 후 리셋
     if last_food_sense_time > 0 and current_time - last_food_sense_time >= NEURON_RESET_TIME:
         brain.IsStimulatedFoodSenseNeurons = False
+    
+    # ========================================
+    # 뉴런 전위값 기록
+    # ========================================
+    frame_count += 1
+    # 근육을 제외한 뉴런만 필터링
+    muscle_prefixes = ['MDL', 'MDR', 'MVL', 'MVR']
+    neuron_names = sorted([n for n in brain.PostSynaptic.keys() 
+                          if not any(n.startswith(prefix) for prefix in muscle_prefixes)])
+    
+    # 현재 프레임의 모든 뉴런 전위값 수집
+    voltage_data = [frame_count, current_time]  # 프레임 번호와 시간(ms)
+    for neuron in neuron_names:
+        voltage = brain.PostSynaptic[neuron][brain.CurrentSignalIntensityIndex]
+        voltage_data.append(voltage)
+    
+    neuron_voltage_history.append(voltage_data)
