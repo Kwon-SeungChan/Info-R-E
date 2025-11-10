@@ -519,6 +519,35 @@ def draw_adex_parameters():
     b_surf = font.render(f"b: {brain.b:.1f} pA", True, (255, 150, 150))
     screen.blit(b_surf, (start_x, start_y))
 
+def draw_simulation_time():
+    """
+    메인 화면 왼쪽 하단에 시뮬레이션 시간을 표시합니다.
+    항상 표시됩니다 (디버그 모드 여부 무관).
+    """
+    font = pygame.font.SysFont("malgungothic,arial", 16, bold=True)
+    current_time = pygame.time.get_ticks()
+    elapsed_seconds = current_time / 1000.0
+    
+    # 시간 텍스트 생성
+    time_text = f"시뮬레이션 시간: {elapsed_seconds:.1f}초"
+    time_surf = font.render(time_text, True, (255, 255, 100))
+    
+    # 왼쪽 하단에 표시 (약간의 여백 포함)
+    text_x = 10
+    text_y = WINDOW_HEIGHT - 30
+    
+    # 배경 박스 (반투명)
+    text_rect = time_surf.get_rect(topleft=(text_x, text_y))
+    padding = 5
+    bg_rect = pygame.Rect(text_rect.x - padding, text_rect.y - padding, 
+                          text_rect.width + padding * 2, text_rect.height + padding * 2)
+    bg_surface = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(bg_surface, (0, 0, 0, 180), bg_surface.get_rect())
+    screen.blit(bg_surface, (bg_rect.x, bg_rect.y))
+    
+    # 시간 텍스트 표시
+    screen.blit(time_surf, (text_x, text_y))
+
 # ============================================================
 # 벌레 그리기 함수
 # ============================================================
@@ -1173,8 +1202,9 @@ while True:
     draw_food()  # 먹이 그리기
     draw_worm()  # 벌레 그리기
     draw_debug_info()  # 디버그 정보 (감지 범위 등)
-    draw_adex_parameters()  # AdEx 모델 파라미터 표시 (메인 화면 왼쪽 상단)
+    draw_adex_parameters()  # AdEx 모델 파라미터 표시 (디버그 모드에서만)
     draw_brain_activity(brain, screen, WINDOW_WIDTH - NEURON_PANEL_WIDTH, 0, NEURON_PANEL_WIDTH, WINDOW_HEIGHT)  # 뉴런 시각화
+    draw_simulation_time()  # 시뮬레이션 시간 표시 (항상)
     
     # 디버그 모드: 브러쉬 커서 표시
     if debug_mode:

@@ -51,9 +51,9 @@ def load_neuron_data(csv_file):
     # 데이터 로드
     df = pd.read_csv(csv_file)
     
-    # time_ms 열 추출
-    time_steps = df['time_ms'].values
-    df = df.drop(columns=['time_ms'])
+    # Time_ms 열 추출 (대문자 T)
+    time_steps = df['Time_ms'].values
+    df = df.drop(columns=['Frame', 'Time_ms'])
     
     return df, time_steps
 
